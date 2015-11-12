@@ -336,8 +336,8 @@
   function setNeedMess(need, rel)
   {
     if ((typeof rel !== 'undefined' && rel === true) || 
-      typeof need === 'string' && 
-      (need.charAt(0) == '+' || need.charAt(0) == '-'))
+        typeof need === 'string' && 
+        (need.charAt(0) == '+' || need.charAt(0) == '-'))
     {
       needM += Number(need);
     } else {
