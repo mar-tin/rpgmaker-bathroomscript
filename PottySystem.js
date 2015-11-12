@@ -26,7 +26,7 @@
  * @param timer
  * @desc How often the main loops needs to be repeated. Seconds 
  * between loops.
- * @default 20
+ * @default 10
  * 
  * @param startRunning
  * @desc Start the game with the timer runnung
@@ -35,29 +35,52 @@
  * @param holdW
  * @desc how much pee can be held by default. Will only be used at
  * the start of the game after that use commands to change it
- * @default 100
+ * @default 200
  * 
  * @param holdM
  * @desc how much poop can be held by default. Will only be used at
  * the start of the game after that use commands to change it
- * @default 150
+ * @default 300
+ * 
+ * @param trainW
+ * @desc How well the player can hold their pee. 0-100
+ * @default 40
+ * 
+ * @param trainM
+ * @desc How well the player can hold their poop. 0-100
+ * @default 40
  * 
  * @param wetInc
  * @desc how much max (random number between 0 and this number) to 
  * add each loop to the need to pee.
- * @default 5
+ * @default 15
  * 
  * @param messInc
  * @desc how much max (random number between 0 and this number) to 
  * add each loop to the need to poop.
- * @default 5
+ * @default 15
+ *
+ * @param equimentId
+ * @desc Number of the first underwear (Clean Undies) See help.
  * 
  * @help
+ * Autorun Event:
  * 
  * Every map a player can load on and the first map loaded in a game must have
  * an event with the plugin command 'PottySystem autorun' which is set to
  * autorun and priority above players. The plugin will deal with the event to
  * prevent the game locking.
+ * 
+ * Equipment:
+ * 
+ * This plugin can swap out armor to indicate the type of underwear and 
+ * status currently appropriate. If so you will have to provide the appropriate
+ * armor items equipment slot (defaulted to the values needed from the demo).
+ * Also you will have to change what is being worn using this script rather than
+ * the default rpg-maker commands as otherwise the plugin won't know.
+ * 
+ * The order of items is: Undies - Pullups - Diapers and within each item the
+ * order is: clean - Wet - Messy - Wet and Messy.
  * 
  * Commands:
  * 
@@ -109,27 +132,29 @@
  */
 //===============================================================================
 
+var external = {};
 
-(function() 
+(function(e) 
 {
+  "use strict"
 
   var params = PluginManager.parameters('PottySystem');
 
   var running = false;
   var loop = 'blocked';
 
-  var current_wear, needW, needM, holdW, holdM, incW, incM;
+  var current_wear, needW, needM, holdW, holdM, incW, incM, trainW, trainM;
 
-  FLAGCOUNT = 2;
+  const FLAGCOUNT = 2;
 
-  WET  = 1<<0;     // 0x1
-  MESSY = 1<<1;    // 0x2
+  const WET  = 1<<0;     // 0x1
+  const MESSY = 1<<1;    // 0x2
 
-  UNDIES  = 0<<FLAGCOUNT; // 0
-  PULLUPS = 1<<FLAGCOUNT; // 4
-  DIAPERS = 2<<FLAGCOUNT; // 8
+  const UNDIES  = 0<<FLAGCOUNT; // 0
+  const PULLUPS = 1<<FLAGCOUNT; // 4
+  const DIAPERS = 2<<FLAGCOUNT; // 8
 
-  PRONOUNS = {
+  const PRONOUNS = {
     male: {subject: 'he', object: 'him', prenom_pos: 'his', predic_pos: 'his', reflexive: 'himself'},
     female: {subject: 'she', object: 'her', prenom_pos: 'her', predic_pos: 'hers', reflexive: 'herself'},
     neutral: {subject: 'they', object: 'them', prenom_pos: 'their', predic_pos: 'theirs', reflexive: 'themselves'}
@@ -209,12 +234,13 @@
 
   function getFeelReq(need)
   {
-    return (need < 0.10215 || need > 1) ? 0 : 4.545 * Math.pow(need, 4) -9.172 * Math.pow(need, 3) +4.847 * Math.pow(need, 2) -1.207 * need +1.082;
+    return (need < 0.10446 || need > 1) ? 1 : 5.755 * Math.pow(need, 4) -10.619 * Math.pow(need, 3) +4.984 * Math.pow(need, 2) -1.091 * need +1.071;
   }
 
   function getFeelRnd(train)
   {
-    Math.pow(Math.random(), 1.5 * (1-Math.pow(train, 2)) + 0.5) * (0.9 * train + 0.1);
+    var t = train/100;
+    return Math.pow(Math.random(), 1.5 * (1-Math.pow(t, 2)) + 0.5) * (0.9 * t + 0.1);
   }
 
   function rnd(a,b)
@@ -248,7 +274,7 @@
 
   function getVar(num)
   {
-    return Number(JSON.stringify($gameVariables._data[num]));
+    return $gameVariables.value(num);
   }
 
   function setSwitch(n, value)
@@ -307,6 +333,12 @@
   }
 
   // == Setters ===============================================================
+
+  e.setTrain = function(x)
+  {
+    trainW = x;
+    trainM = x;
+  }
 
   function setWear(wear, preserveState)
   {
@@ -390,6 +422,46 @@
 
   // == Events ================================================================
 
+  function feel(type)
+  {
+    var rtn = {wet: false, messy: false};
+    if (type & WET)
+    {
+      var tempRnd = getFeelRnd(trainW);
+      //console.log(needW/holdW + ' ' + getFeelReq(needW/holdW) + ' ' + tempRnd);
+      if(getFeelReq(needW/holdW) < tempRnd)
+      {
+        //console.log('I need to pee');
+        rtn.wet = true;
+        //$gameMessage.add('I have to pee');
+      }
+    }
+
+    if (type & MESSY)
+    {
+      if(getFeelReq(needM/holdM) < getFeelRnd(trainM))
+      {
+        //console.log('I need to Poop');
+        rtn.messy = true;
+        //$gameMessage.add('I have to poop');
+      }
+    }
+
+    return rtn;
+  }
+
+  function wet() 
+  {
+    setNeedWet(0);
+    //console.log('Oops! *wets*');
+  }
+
+  function mess()
+  {
+    setNeedMess(0);
+    //console.log('Oops! *messes*');
+  }
+
   // == Main ==================================================================
 
   function autoRun(event)
@@ -420,6 +492,11 @@
       holdM = params['holdM'] || 150;
       holdM =   parseInteger(holdM, 150);
 
+      trainW = params['trainW'] || 40;
+      trainW =   parseInteger(trainW, 40);
+      trainM = params['trainM'] || 40;
+      trainM =   parseInteger(trainM, 40);
+
       incW = params['wetInc']  || 5;
       incW =   parseInteger(incW, 5);
       incM = params['messInc'] || 5;
@@ -434,8 +511,10 @@
       setVar(18, needM);
       setVar(17, holdW);
       setVar(16, holdM);
-      setVar(15, incW );
-      setVar(14, incM );
+      setVar(15, trainW);
+      setVar(14, trainM);
+      setVar(13, incW );
+      setVar(12, incM );
 
       if (startRunning)
       {
@@ -453,8 +532,10 @@
       needM        = getVar(18);
       holdW        = getVar(17);
       holdM        = getVar(16);
-      incW         = getVar(15);
-      incM         = getVar(14);
+      trainW       = getVar(15);
+      trainM       = getVar(14);
+      incW         = getVar(13);
+      incM         = getVar(12);
     }
 
   }
@@ -486,8 +567,12 @@
     setNeedMess(rnd(1,incM),true);
 
     // Check if feel
+    feel(WET | MESSY);
 
     // Check if accident
+
+    if (needW > holdW) {wet();}
+    if (needM > holdM) {mess();}
 
     // Reset loop
     loop = setTimeout(main, timer);
@@ -496,13 +581,70 @@
 
   // == Debug =================================================================
 
+  e.debug = function(x)
+  {
+    e.setTrain(x);
+    debug();
+    512
+    var stat = {feelW: 0, feelM: 0, wet: 0, messy: 0, wCount: [], mCount: []};
+    var wCount = 0;
+    var mCount = 0;
+
+    halt();
+
+    for (var i=0; i<1000000; i++)
+    {
+      setNeedWet(rnd(1,incW),true);
+      setNeedMess(rnd(1,incM),true);
+
+
+      if (needW > holdW) {wet(); stat.wet++; stat.wCount.push(wCount); wCount = 0;}
+      if (needM > holdM) {mess(); stat.messy++; stat.mCount.push(mCount); mCount = 0;}
+
+      var rtn = feel(WET | MESSY);
+
+      if (wCount !== 0) {wCount++;}
+      if (mCount !== 0) {mCount++;}
+
+      if (rtn.wet) {stat.feelW++;}
+      if (rtn.messy) {stat.feelM++;}
+
+      if (rtn.wet && wCount === 0) {wCount++;}
+      if (rtn.messy && mCount === 0) {mCount++;}
+
+    }
+
+    var wCountSum = 0;
+    var wNoWarn = 0;
+    for (var i = stat.wCount.length - 1; i >= 0; i--) {
+      wCountSum += stat.wCount[i];
+      if (stat.wCount[i] === 1) {wNoWarn++;}
+    };
+
+    var wCountAve = wCountSum/stat.wCount.length;
+
+    var mCountSum = 0;
+    var mNoWarn = 0;
+    for (var i = stat.mCount.length - 1; i >= 0; i--) {
+      mCountSum += stat.mCount[i];
+      if (stat.mCount[i] === 1) {mNoWarn++;}
+    };
+
+    var mCountAve = wCountSum/stat.mCount.length;
+
+    console.log('wet feel: ' + stat.feelW + ' accidents: ' + stat.wet + " f/a: " + (stat.feelW/stat.wet).toFixed(4) + ' aveCount: ' + wCountAve.toFixed(4) + " noWarn: " + wNoWarn + "(" + (wNoWarn*100/stat.wet).toFixed(1) + "%)");
+    console.log('mess feel: ' + stat.feelM + ' accidents: ' + stat.messy + " f/a: " + (stat.feelM/stat.messy).toFixed(4) + ' aveCount: ' + mCountAve.toFixed(4) + " noWarn: " + mNoWarn + "(" + (mNoWarn*100/stat.messy).toFixed(1) + "%)");
+
+    start();
+  }
+
   function debug()
   {
 
-    console.log(typeof startRunning + ': ' + startRunning + ', ' + running);
+    //console.log(getVar(2));
 
   }
 
   console.log('PottySystem Loaded.');
 
-})();
+})(external);
