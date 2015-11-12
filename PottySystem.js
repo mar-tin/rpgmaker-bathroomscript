@@ -32,6 +32,16 @@
  * @desc Start the game with the timer runnung
  * @default true
  * 
+ * @param holdW
+ * @desc how much pee can be held by default. Will only be used
+ * At the start of the game after that it can be changed with commands
+ * @default 100
+ * 
+ * @param holdM
+ * @desc how much poop can be held by default. Will only be used
+ * At the start of the game after that it can be changed with commands
+ * @default 150
+ * 
  * @param wetInc
  * @desc how much max (random number between 0 and this number) to 
  * add each loop to the need to pee.
@@ -82,30 +92,19 @@
 
 	params = PluginManager.parameters('PottySystem');
 
-	timer = Number(params['timer']*1000) || 20*1000;
 	running = false;
 	loop = "blocked";
 
+	var current_wear, needW, needM, holdW, holdM, incW, incM;
+
 	flagCount = 2
 
-	wet  = true<<0;     // 0x1
-	messy = true<<1;    // 0x2
+	wet  = 1<<0;     // 0x1
+	messy = 1<<1;    // 0x2
 
 	undies  = 0<<flagCount; // 0
 	pullups = 1<<flagCount; // 4
 	diapers = 2<<flagCount; // 8
-
-	needW = 0;
-	needM = 0;
-
-	incW = params['wetInc']  || 5;
-	incM = params['messInc'] || 5;
-
-	wetSwitch   = params['wetSwitch']    || 0;
-	messySwitch = params['messySwitch']  || 0;
-	wearVar     = params['underwearVar'] || 0;
-
-	current_wear = params['defaultWear']<<flagCount || 0<<flagCount;
 
 	pronouns = {male:   {subject: "he"  , object: "him" , prenom_pos: "his"  , predic_pos: "his"   , reflexive: "himself"},
 				female: {subject: "she" , object: "her" , prenom_pos: "her"  , predic_pos: "hers"  , reflexive: "herself"},
@@ -121,12 +120,12 @@
 	   aliasPluginCommand.call(this, command, args);
 		if (command === 'PottySystem')
 		{
-			switch(args[0])
+			switch(args[0].toLowerCase())
 			{
 			case 'debug':
 				debug();
 				break;
-			case 'autoRun':
+			case 'autorun':
 				autoRun(this);
 				break;
 			case 'start':
@@ -135,28 +134,28 @@
 			case 'stop':
 				stop();
 				break;
-			case 'setWear':
+			case 'setwear':
 				setWear(args[1])
 				break;
-			case 'setNeedWet':
+			case 'setneedwet':
 				setNeedWet(args[1],true)
 				break;
-			case 'setNeedMess':
+			case 'setneedmess':
 				setNeedMess(args[1],true)
 				break;
-			case 'setWet':
+			case 'setwet':
 				setWet(boolEval(args[1]));
 				break;
-			case 'setMessy':
+			case 'setmessy':
 				setMessy(boolEval(args[1]));
 				break;
-			case 'setClean':
+			case 'setclean':
 				setClean(boolEval(args[1]));
 				break;
-			case 'isWet':
+			case 'iswet':
 				setSwitch(Number(args[1]), isWet(current_wear));
 				break;
-			case 'isMessy':
+			case 'ismessy':
 				setSwitch(Number(args[1]), isMessy(current_wear));
 				break;
 			case 'main':
@@ -172,6 +171,11 @@
 	// ===== Common functions =================================================
 
 	// == Utilities ===========================================================
+
+	function parseInteger(num, def)
+	{
+		return isInt(num) ? Number(num) : def;
+	}
 
 	function chance(perc) 
 	{
@@ -279,10 +283,15 @@
 
 	// == Setters =============================================================
 
-	function setWear(num) // CHANGE TO WEAR OBJ, Strip of flags then set preserving current flags
+	function setWear(wear, preserveState)
 	{
-		wearVar && $gameVariables.setValue(wearVar, num);
-		current_wear = num<<flagCount;
+		if(typeof preserveState !== "undefined" && preserveState === true)
+		{
+			wear = wear | (current_wear & (wet | messy));
+		}
+
+		wearVar && $gameVariables.setValue(wearVar, wear>>flagCount);
+		current_wear = wear;
 	}
 
 	function setNeedWet(need, rel)
@@ -296,6 +305,7 @@
 			needW = Number(need);
 		}
 
+		console.log(need + " " + needW);
 		setVar(19,needW);
 	}
 
@@ -361,26 +371,64 @@
 	function autoRun(event)
 	{
 		$gameMap.eraseEvent(event._eventId);
+		startRunning = evalBool(params['startRunning']) || true;
+
+		timer = params['timer'] || 20;
+		timer =   parseInteger(timer, 20) * 1000;
+
+		wetSwitch   = params['wetSwitch']    || 0;
+		wetSwitch   =   parseInteger(wetSwitch, 0);
+		messySwitch = params['messySwitch']  || 0;
+		messySwitch =   parseInteger(messySwitch, 0);
+		wearVar     = params['underwearVar'] || 0;
+		wearVar     =   parseInteger(wearVar, 0);
+		
 		if(!getSwitch(19))
 		{
-			startRunning = evalBool(params['startRunning']) || true;
+
+			needW = 0;
+			needM = 0;
+
+			holdW = params['holdW'] || 100;
+			holdW =   parseInteger(holdW, 100);
+			holdM = params['holdM'] || 150;
+			holdM =   parseInteger(holdM, 150);
+
+			incW = params['wetInc']  || 5;
+			incW =   parseInteger(incW, 5);
+			incM = params['messInc'] || 5;
+			incM =   parseInteger(incM, 5);
+
+			current_wear = params['defaultWear'] || 0;
+			current_wear =   parseInteger(current_wear, 0)<<flagCount;
 
 			setSwitch(19, true);
 			setVar(20, current_wear);
 			setVar(19, needW);
 			setVar(18, needM);
+			setVar(17, holdW);
+			setVar(16, holdM);
+			setVar(15, incW );
+			setVar(14, incM );
 
-			console.log("autorun");
+			if(startRunning)
+			{
+				start();
+			}
 		} else {
-			console.log("already loaded");
 			if(getSwitch(20) !== running)
 			{
+				console.log(running + " " + getSwitch(20))
 				!running && start() || running && halt();
 			}
 
 			current_wear = getVar(20);
 			needW        = getVar(19);
 			needM        = getVar(18);
+			holdW        = getVar(17);
+			holdM        = getVar(16);
+			incW         = getVar(15);
+			incM         = getVar(14);
 		}
 
 	}
@@ -388,16 +436,21 @@
 	function start()
 	{
 		setSwitch(20, true);
-		running = true && (loop = "pending") && main();
+		(running = true) && (loop = "pending") && main();
+		console.log("Start: " + running + " " + loop);
+
+		return true; // Or it will be killed in the autoRun fn.
 	}
 
 	function halt()
 	{
-		loop !== null && clearTimeout(loop) && (loop = null) && (running = null);
+		loop !== null && clearTimeout(loop) && (loop = null) && (running = false);
 		if(loop === "pending")
 		{
 			setTimeout(halt, 1000);
 		}
+
+		console.log("Halt: " + running + " " + loop);
 	}
 
 	function main()
@@ -419,30 +472,11 @@
 
 	function debug()
 	{
-		chance(10);
-		getFeelReq(0.5);
-		getFeelRnd(0.5);
-		rnd(99);
-		evalBool("false");
-		isInt(50);
-		getSwitch(20);
-		getVar(1);
-		setSwitch(22,true);
-		setFlag(current_wear,wet,true);
-		isWet();
-		isMessy();
-		isUndies();
-		isPullups();
-		isDiapers();
-		setWear(1);
-		setNeedWet(5);
-		setNeedMess(5);
-		setWet();
-		setMessy();
-		setClean();
 
-		console.log(needW + " " + needM);
+		console.log(typeof startRunning + ": " + startRunning + ", " + running);
 
 	}
+
+	console.log("PottySystem Loaded.");
 
 })();
