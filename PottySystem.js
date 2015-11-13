@@ -414,7 +414,6 @@
 
   function changeUnderwear(newWear)
   {
-    console.log(newWear);
     current_wear = newWear;
     setVar(20, current_wear);
     var actor = $gameParty.leader();
@@ -525,12 +524,10 @@
     console.log('autorun');
     var startRunning = evalBool(params['startRunning']) || true;
 
-    startRunning = false;
-
     timer = params['timer'] || 20;
     timer =   parseInteger(timer, 20) * 1000;
 
-    timer = 500;
+    //timer = 500;
 
     wetSwitch   = params['wetSwitch']    || 0;
     wetSwitch   =   parseInteger(wetSwitch, 0);
