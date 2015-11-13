@@ -415,12 +415,13 @@
   function changeUnderwear(newWear)
   {
     console.log(newWear);
-    var oldArmor = getArmor();
     current_wear = newWear;
     setVar(20, current_wear);
+    var actor = $gameParty.leader();
+    var oldArmor = actor.equips()[underwearSlot]; // hardcoded slot
     var newArmor = getArmor();
     $gameParty.gainItem(newArmor,1, true);
-    $gameParty.leader().changeEquip(4,newArmor); //hardcoded slot
+    actor.changeEquip(underwearSlot,newArmor); //hardcoded slot
     $gameParty.gainItem(oldArmor,-1,true);
 
   }
@@ -543,7 +544,7 @@
     armorId[1] = params['idOffsetFemale'] || 0;
     armorId[1] =   parseInteger(armorId[1], 0) + armorId[0];
     armorId[2] = params['idOffsetGeneric'] || 0;
-    armorId[3] =   parseInteger(armorId[2], 0) + armorId[0];
+    armorId[2] =   parseInteger(armorId[2], 0) + armorId[0];
 
     underwearSlot = params['underwearSlot'] || 5;
     underwearSlot =   parseInteger(underwearSlot, 5)-1;
