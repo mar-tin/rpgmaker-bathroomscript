@@ -155,13 +155,11 @@
  * PottySystem isMessy <switch>
  * Sets the provided switch number to the current messyness state.
  */
-//===============================================================================
+//===============================================================================;
 
-var external = {};
-
-(function(e) 
+(function()
 {
-  "use strict"
+  'use strict';
 
   var params = PluginManager.parameters('PottySystem');
 
@@ -172,14 +170,14 @@ var external = {};
   var wetSwitch, messySwitch, wearVar, gender, underwearSlot;
   var armorId = [];
 
-  const FLAGCOUNT = 2;
+  const FLAGCOUNT = 2; // number of states
 
-  const WET  = 1<<0;     // 0x1
-  const MESSY = 1<<1;    // 0x2
+  const STATE_WET  = 1<<0;     // 0x1
+  const STATE_MESSY = 1<<1;    // 0x2
 
-  const UNDIES  = 0<<FLAGCOUNT; // 0
-  const PULLUPS = 1<<FLAGCOUNT; // 4
-  const DIAPERS = 2<<FLAGCOUNT; // 8
+  const WEAR_UNDIES  = 0<<FLAGCOUNT; // 0
+  const WEAR_PULLUPS = 1<<FLAGCOUNT; // 4
+  const WEAR_DIAPERS = 2<<FLAGCOUNT; // 8
 
   const PRONOUNS = {
     male: {subject: 'he', object: 'him', prenom_pos: 'his', predic_pos: 'his', reflexive: 'himself'},
@@ -202,7 +200,7 @@ var external = {};
 
   Game_Interpreter.prototype.pluginCommand = function(command, args) 
   {
-     aliasPluginCommand.call(this, command, args);
+    aliasPluginCommand.call(this, command, args);
     if (command === 'PottySystem')
     {
       switch(args[0].toLowerCase())
@@ -241,19 +239,19 @@ var external = {};
         setNeedMess(args[1],true);
         break;
       case 'setwet':
-        setWet(boolEval(args[1]));
+        setWet(evalBool(args[1]));
         break;
       case 'setmessy':
-        setMessy(boolEval(args[1]));
+        setMessy(evalBool(args[1]));
         break;
       case 'setclean':
         setClean();
         break;
       case 'iswet':
-        setSwitch(Number(args[1]), isWet(current_wear));
+        setSwitch(Number(args[1]), isState(STATE_WET));
         break;
       case 'ismessy':
-        setSwitch(Number(args[1]), isMessy(current_wear));
+        setSwitch(Number(args[1]), isState(STATE_MESSY));
         break;
       default:
         $gameMessage.add('PottySystem ' + args[0] + ' is an unknown command');
@@ -271,7 +269,7 @@ var external = {};
     return isInt(num) ? Number(num) : def;
   }
 
-  function chance(perc) 
+  function chance(perc)
   {
     return (rnd(99) < perc);
   }
@@ -309,7 +307,7 @@ var external = {};
 
   function isInt(n)
   {
-    return Number(n) !== NaN && n % 1 === 0;
+    return !isNaN(Number(n)) && n % 1 === 0;
   }
 
   function getSwitch(n)
@@ -324,8 +322,8 @@ var external = {};
 
   function getArmor(wear, gndr)
   {
-    gndr = typeof gndr === "undefined" ? gender : gndr;
-    wear = typeof wear === "undefined" ? current_wear : wear;
+    gndr = typeof gndr === 'undefined' ? gender : gndr;
+    wear = typeof wear === 'undefined' ? current_wear : wear;
 
     return $dataArmors[armorId[gndr] + wear];
   }
@@ -355,43 +353,19 @@ var external = {};
 
   // == Getters ===============================================================
 
-  function isWet(wear)
+  function isState(state, wear)
   {
-    wear = wear || current_wear;
-    return ((wear & WET) > 0);
+    wear = typeof wear === 'undefined' ? current_wear : wear ;
+    return((wear & state) === state);
   }
 
-  function isMessy(wear)
+  function isUnderwear(type, wear)
   {
-    wear = wear || current_wear;
-    return ((wear & MESSY) > 0);
-  }
-
-  function isUndies(wear)
-  {
-    wear = wear || current_wear;
-    return (wear>>FLAGCOUNT === 0);
-  }
-
-  function isPullups(wear)
-  {
-    wear = wear || current_wear;
-    return (wear>>FLAGCOUNT === 1);
-  }
-
-  function isDiapers(wear)
-  {
-    wear = wear || current_wear;
-    return (wear>>FLAGCOUNT === 2);
+    wear = typeof wear === 'undefined' ? current_wear : wear ;
+    return (type>>FLAGCOUNT === wear>>FLAGCOUNT);
   }
 
   // == Setters ===============================================================
-
-  e.setTrain = function(x)
-  {
-    trainW = x;
-    trainM = x;
-  }
 
   function setGender(gndr)
   {
@@ -403,7 +377,7 @@ var external = {};
   {
     if (typeof preserveState !== 'undefined' && preserveState === true)
     {
-      wear = wear | (current_wear & (WET | MESSY));
+      wear = wear | (current_wear & (STATE_WET | STATE_MESSY));
     }
 
     wearVar && $gameVariables.setValue(wearVar, wear<<FLAGCOUNT);
@@ -453,10 +427,9 @@ var external = {};
 
   function setWet(set, wear)
   {
-    var old_wear = current_wear;
     set = typeof set !== 'undefined' ? set : true;
     var toSet = wear || current_wear;
-    toSet = setFlag(toSet, WET, set);
+    toSet = setFlag(toSet, STATE_WET, set);
     if (typeof wear === 'undefined')
     {
       changeUnderwear(toSet);
@@ -470,7 +443,7 @@ var external = {};
   {
     set = typeof set !== 'undefined' ? set : true;
     var toSet = wear || current_wear;
-    toSet = setFlag(toSet, MESSY, set);
+    toSet = setFlag(toSet, STATE_MESSY, set);
     if (typeof wear === 'undefined')
     {
       changeUnderwear(toSet);
@@ -482,7 +455,7 @@ var external = {};
   function setClean(wear)
   {
     var toSet = wear | current_wear;
-    toSet = setFlag(toSet, WET | MESSY, false);
+    toSet = setFlag(toSet, STATE_WET | STATE_MESSY, false);
     if (typeof wear === 'undefined')
     {
       changeUnderwear(toSet);
@@ -498,7 +471,7 @@ var external = {};
   function feel(type)
   {
     var rtn = {wet: false, messy: false};
-    if (type & WET)
+    if (type & STATE_WET)
     {
       var tempRnd = getFeelRnd(trainW);
       //console.log(needW/holdW + ' ' + getFeelReq(needW/holdW) + ' ' + tempRnd);
@@ -510,7 +483,7 @@ var external = {};
       }
     }
 
-    if (type & MESSY)
+    if (type & STATE_MESSY)
     {
       if(getFeelReq(needM/holdM) < getFeelRnd(trainM))
       {
@@ -652,7 +625,7 @@ var external = {};
   {
     if (loop !== null)
     {
-      clearTimeout(loop)
+      clearTimeout(loop);
       loop = null;
       running = false;
     }
@@ -671,7 +644,7 @@ var external = {};
     setNeedMess(rnd(1,incM),true);
 
     // Check if feel
-    feel(WET | MESSY);
+    feel(STATE_WET | STATE_MESSY);
 
     // Check if accident
 
@@ -685,75 +658,6 @@ var external = {};
 
   // == Debug =================================================================
 
-  e.debug = function(x)
-  {
-
-    halt();
-
-    e.setTrain(x);
-    debug();
-    512
-    var stat = {feelW: 0, feelM: 0, wet: 0, messy: 0, wCount: [], mCount: []};
-    var wCount = 0;
-    var mCount = 0;
-
-    for (var i=0; i<1000000; i++)
-    {
-      setNeedWet(rnd(1,incW),true);
-      setNeedMess(rnd(1,incM),true);
-
-
-      if (needW > holdW) {wet(); stat.wet++; stat.wCount.push(wCount); wCount = 0;}
-      if (needM > holdM) {mess(); stat.messy++; stat.mCount.push(mCount); mCount = 0;}
-
-      var rtn = feel(WET | MESSY);
-
-      if (wCount !== 0) {wCount++;}
-      if (mCount !== 0) {mCount++;}
-
-      if (rtn.wet) {stat.feelW++;}
-      if (rtn.messy) {stat.feelM++;}
-
-      if (rtn.wet && wCount === 0) {wCount++;}
-      if (rtn.messy && mCount === 0) {mCount++;}
-
-    }
-
-    var wCountSum = 0;
-    var wNoWarn = 0;
-    for (var i = stat.wCount.length - 1; i >= 0; i--) {
-      wCountSum += stat.wCount[i];
-      if (stat.wCount[i] === 0) {wNoWarn++;}
-    };
-
-    var wCountAve = wCountSum/stat.wCount.length;
-
-    var mCountSum = 0;
-    var mNoWarn = 0;
-    for (var i = stat.mCount.length - 1; i >= 0; i--) {
-      mCountSum += stat.mCount[i];
-      if (stat.mCount[i] === 0) {mNoWarn++;}
-    };
-
-    var mCountAve = wCountSum/stat.mCount.length;
-
-    //console.log('wet feel: ' + stat.feelW + ' accidents: ' + stat.wet + " f/a: " + (stat.feelW/stat.wet).toFixed(4) + ' aveCount: ' + wCountAve.toFixed(4) + " noWarn: " + wNoWarn + "(" + (wNoWarn*100/stat.wet).toFixed(1) + "%)");
-    //console.log('mess feel: ' + stat.feelM + ' accidents: ' + stat.messy + " f/a: " + (stat.feelM/stat.messy).toFixed(4) + ' aveCount: ' + mCountAve.toFixed(4) + " noWarn: " + mNoWarn + "(" + (mNoWarn*100/stat.messy).toFixed(1) + "%)");
-    console.log(x + ': wet: ' + (wNoWarn*100/stat.wet).toFixed(1) + ' mess: ' + (mNoWarn*100/stat.messy).toFixed(1) + "%");
-    stat = null;
-    wNoWarn = null;
-    mNoWarn = null;
-    wCount = null;
-    mCount = null;
-    wCountSum = null;
-    mCountSum = null;
-    mCountAve = null;
-    wCountAve = null;
-    
-
-    start();
-  }
-
   function debug()
   {
     //console.log(getVar(2));
@@ -762,4 +666,4 @@ var external = {};
 
   console.log('PottySystem Loaded.');
 
-})(external);
+})();
