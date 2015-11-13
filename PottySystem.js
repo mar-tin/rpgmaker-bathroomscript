@@ -62,6 +62,27 @@
  *
  * @param equimentId
  * @desc Number of the first underwear (Clean Undies) See help.
+ * @default 0
+ * 
+ * @param idOffsetFemale
+ * @desc Offset for the first female armor items from the default
+ * equipment id.
+ * @defalut 0
+ * 
+ * @param idOffsetGeneric
+ * @desc Offset for the first generic armor items from the default
+ * equipment id.
+ * @default 0
+ *
+ * @param underwearSlot
+ * @desc Number of the underwear slot, found in Database->Types
+ * ->Equipment Types, if it doesn't exist create one.
+ * @default 5
+ * 
+ * @param defaultGender
+ * @desc Default gender used unless set elsewhere via commands.
+ * 0 = male, 1 = female, 2 = generic
+ * @default 0
  * 
  * @help
  * Autorun Event:
@@ -82,6 +103,11 @@
  * The order of items is: Undies - Pullups - Diapers and within each item the
  * order is: clean - Wet - Messy - Wet and Messy.
  * 
+ * Also it is possible to set diffent equipment slots for different genders.
+ * Those start by defalut at 0 which means they will use the same items. If you
+ * want to change this change it how much higher the itemid is. (if you add them
+ * right after eachother it will be 12 and 24, they are set this way in the demo)
+ *  
  * Commands:
  * 
  * PottySystem is case sensitive but the rest of the command isn't.
@@ -100,6 +126,12 @@
  * PottySystem stop
  * Stops the main loop. All commands will still work but bladder won't fill, it 
  * won't trigger automaticlly feeling the need to go and having accidents.
+ * 
+ * PottySystem wet
+ * manually triggers wetting event;
+ * 
+ * PottySystem mess
+ * Manually triggers messing event
  * 
  * PottySystem setWear <type>
  * Set current type of underwear: 
@@ -143,7 +175,9 @@ var external = {};
   var running = false;
   var loop = 'blocked';
 
-  var current_wear, needW, needM, holdW, holdM, incW, incM, trainW, trainM;
+  var timer, current_wear, needW, needM, holdW, holdM, incW, incM, trainW, trainM;
+  var wetSwitch, messySwitch, wearVar, gender, underwearSlot;
+  var armorId = [];
 
   const FLAGCOUNT = 2;
 
@@ -185,10 +219,19 @@ var external = {};
         !running && start();
         break;
       case 'stop':
-        stop();
+        halt();
+        break;
+      case 'wet':
+        wet();
+        break;
+      case 'mess':
+        mess();
         break;
       case 'setwear':
-        setWear(args[1])
+        setWear(parseInteger(args[1],current_wear>>FLAGCOUNT));
+        break;
+      case 'setgender':
+        setGender(parseInteger(args[1], gender));
         break;
       case 'setneedwet':
         setNeedWet(args[1],true);
@@ -245,6 +288,7 @@ var external = {};
 
   function rnd(a,b)
   {
+    var min, max;
     if (typeof b === 'undefined')
     {
       min = 0;
@@ -275,6 +319,14 @@ var external = {};
   function getVar(num)
   {
     return $gameVariables.value(num);
+  }
+
+  function getArmor(wear, gndr)
+  {
+    gndr = typeof gndr === "undefined" ? gender : gndr;
+    wear = typeof wear === "undefined" ? current_wear : wear;
+
+    return $dataArmors[armorId[gndr] + wear];
   }
 
   function setSwitch(n, value)
@@ -340,6 +392,12 @@ var external = {};
     trainM = x;
   }
 
+  function setGender(gndr)
+  {
+    gender = gndr;
+    setVar(11,gender); //changing gender breaks changeUnderwear
+  }
+
   function setWear(wear, preserveState)
   {
     if (typeof preserveState !== 'undefined' && preserveState === true)
@@ -347,8 +405,8 @@ var external = {};
       wear = wear | (current_wear & (WET | MESSY));
     }
 
-    wearVar && $gameVariables.setValue(wearVar, wear>>FLAGCOUNT);
-    current_wear = wear;
+    wearVar && $gameVariables.setValue(wearVar, wear<<FLAGCOUNT);
+    changeUnderwear(wear<<FLAGCOUNT);
   }
 
   function setNeedWet(need, rel)
@@ -379,15 +437,29 @@ var external = {};
     setVar(18,needM);
   }
 
+  function changeUnderwear(newWear)
+  {
+    console.log(newWear);
+    var oldArmor = getArmor();
+    current_wear = newWear;
+    setVar(20, current_wear);
+    var newArmor = getArmor();
+    $gameParty.gainItem(newArmor,1, true);
+    $gameParty.leader().changeEquip(4,newArmor); //hardcoded slot
+    $gameParty.gainItem(oldArmor,-1,true);
+
+  }
+
   function setWet(set, wear)
   {
+    var old_wear = current_wear;
     set = typeof set !== 'undefined' ? set : true;
-    toSet = wear || current_wear;
+    var toSet = wear || current_wear;
     toSet = setFlag(toSet, WET, set);
     if (typeof wear === 'undefined')
     {
+      changeUnderwear(toSet);
       wetSwitch && setSwitch(wetSwitch, set);
-      current_wear = toSet;
     } else {
       return toSet;
     }
@@ -396,25 +468,25 @@ var external = {};
   function setMessy(set, wear)
   {
     set = typeof set !== 'undefined' ? set : true;
-    toSet = wear || current_wear;
+    var toSet = wear || current_wear;
     toSet = setFlag(toSet, MESSY, set);
     if (typeof wear === 'undefined')
     {
+      changeUnderwear(toSet);
       messySwitch && setSwitch(messySwitch, set);
-      current_wear = toSet;
     } else {
       return toSet;
     }
   }
   function setClean(wear)
   {
-    toSet = wear | current_wear;
+    var toSet = wear | current_wear;
     toSet = setFlag(toSet, WET | MESSY, false);
     if (typeof wear === 'undefined')
     {
+      changeUnderwear(toSet);
       wetSwitch && setSwitch(wetSwitch, false);
       messySwitch && setSwitch(messySwitch, false);
-      current_wear = toSet;
     } else {
       return toSet;
     }
@@ -453,12 +525,14 @@ var external = {};
   function wet() 
   {
     setNeedWet(0);
+    setWet();
     //console.log('Oops! *wets*');
   }
 
   function mess()
   {
     setNeedMess(0);
+    setMessy();
     //console.log('Oops! *messes*');
   }
 
@@ -468,10 +542,14 @@ var external = {};
   {
     console.log('autorun');
     $gameMap.eraseEvent(event._eventId);
-    startRunning = evalBool(params['startRunning']) || true;
+    var startRunning = evalBool(params['startRunning']) || true;
+
+    startRunning = false;
 
     timer = params['timer'] || 20;
     timer =   parseInteger(timer, 20) * 1000;
+
+    timer = 500;
 
     wetSwitch   = params['wetSwitch']    || 0;
     wetSwitch   =   parseInteger(wetSwitch, 0);
@@ -479,6 +557,16 @@ var external = {};
     messySwitch =   parseInteger(messySwitch, 0);
     wearVar     = params['underwearVar'] || 0;
     wearVar     =   parseInteger(wearVar, 0);
+
+    armorId[0] = params['equimentId'] || 0;
+    armorId[0] =   parseInteger(armorId[0], 0);
+    armorId[1] = params['idOffsetFemale'] || 0;
+    armorId[1] =   parseInteger(armorId[1], 0) + armorId[0];
+    armorId[2] = params['idOffsetGeneric'] || 0;
+    armorId[3] =   parseInteger(armorId[2], 0) + armorId[0];
+
+    underwearSlot = params['underwearSlot'] || 5;
+    underwearSlot =   parseInteger(underwearSlot, 5)-1;
     
     if (!getSwitch(19))
     {
@@ -505,6 +593,8 @@ var external = {};
       current_wear = params['defaultWear'] || 0;
       current_wear =   parseInteger(current_wear, 0)<<FLAGCOUNT;
 
+      gender = params['defaultGender'];
+
       setSwitch(19, true);
       setVar(20, current_wear);
       setVar(19, needW);
@@ -515,6 +605,7 @@ var external = {};
       setVar(14, trainM);
       setVar(13, incW );
       setVar(12, incM );
+      setVar(11, gender);
 
       if (startRunning)
       {
@@ -536,6 +627,7 @@ var external = {};
       trainM       = getVar(14);
       incW         = getVar(13);
       incM         = getVar(12);
+      gender       = getVar(11);
     }
 
   }
@@ -544,20 +636,25 @@ var external = {};
   {
     setSwitch(20, true);
     (running = true) && (loop = 'pending') && main();
-    console.log('Start: ' + running + ' ' + loop);
+    // console.log('Start: ' + running + ' ' + loop);
 
     return true; // Or it will be killed in the autoRun fn.
   }
 
   function halt()
   {
-    loop !== null && clearTimeout(loop) && (loop = null) && (running = false);
+    if (loop !== null)
+    {
+      clearTimeout(loop)
+      loop = null;
+      running = false;
+    }
     if (loop === 'pending')
     {
       setTimeout(halt, 1000);
     }
 
-    console.log('Halt: ' + running + ' ' + loop);
+    // console.log('Halt: ' + running + ' ' + loop);
   }
 
   function main()
@@ -583,14 +680,15 @@ var external = {};
 
   e.debug = function(x)
   {
+
+    halt();
+
     e.setTrain(x);
     debug();
     512
     var stat = {feelW: 0, feelM: 0, wet: 0, messy: 0, wCount: [], mCount: []};
     var wCount = 0;
     var mCount = 0;
-
-    halt();
 
     for (var i=0; i<1000000; i++)
     {
@@ -618,7 +716,7 @@ var external = {};
     var wNoWarn = 0;
     for (var i = stat.wCount.length - 1; i >= 0; i--) {
       wCountSum += stat.wCount[i];
-      if (stat.wCount[i] === 1) {wNoWarn++;}
+      if (stat.wCount[i] === 0) {wNoWarn++;}
     };
 
     var wCountAve = wCountSum/stat.wCount.length;
@@ -627,20 +725,30 @@ var external = {};
     var mNoWarn = 0;
     for (var i = stat.mCount.length - 1; i >= 0; i--) {
       mCountSum += stat.mCount[i];
-      if (stat.mCount[i] === 1) {mNoWarn++;}
+      if (stat.mCount[i] === 0) {mNoWarn++;}
     };
 
     var mCountAve = wCountSum/stat.mCount.length;
 
-    console.log('wet feel: ' + stat.feelW + ' accidents: ' + stat.wet + " f/a: " + (stat.feelW/stat.wet).toFixed(4) + ' aveCount: ' + wCountAve.toFixed(4) + " noWarn: " + wNoWarn + "(" + (wNoWarn*100/stat.wet).toFixed(1) + "%)");
-    console.log('mess feel: ' + stat.feelM + ' accidents: ' + stat.messy + " f/a: " + (stat.feelM/stat.messy).toFixed(4) + ' aveCount: ' + mCountAve.toFixed(4) + " noWarn: " + mNoWarn + "(" + (mNoWarn*100/stat.messy).toFixed(1) + "%)");
+    //console.log('wet feel: ' + stat.feelW + ' accidents: ' + stat.wet + " f/a: " + (stat.feelW/stat.wet).toFixed(4) + ' aveCount: ' + wCountAve.toFixed(4) + " noWarn: " + wNoWarn + "(" + (wNoWarn*100/stat.wet).toFixed(1) + "%)");
+    //console.log('mess feel: ' + stat.feelM + ' accidents: ' + stat.messy + " f/a: " + (stat.feelM/stat.messy).toFixed(4) + ' aveCount: ' + mCountAve.toFixed(4) + " noWarn: " + mNoWarn + "(" + (mNoWarn*100/stat.messy).toFixed(1) + "%)");
+    console.log(x + ': wet: ' + (wNoWarn*100/stat.wet).toFixed(1) + ' mess: ' + (mNoWarn*100/stat.messy).toFixed(1) + "%");
+    stat = null;
+    wNoWarn = null;
+    mNoWarn = null;
+    wCount = null;
+    mCount = null;
+    wCountSum = null;
+    mCountSum = null;
+    mCountAve = null;
+    wCountAve = null;
+    
 
     start();
   }
 
   function debug()
   {
-
     //console.log(getVar(2));
 
   }
