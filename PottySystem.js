@@ -85,13 +85,6 @@
  * @default 0
  * 
  * @help
- * Autorun Event:
- * 
- * Every map a player can load on and the first map loaded in a game must have
- * an event with the plugin command 'PottySystem autorun' which is set to
- * autorun and priority above players. The plugin will deal with the event to
- * prevent the game locking.
- * 
  * Equipment:
  * 
  * This plugin can swap out armor to indicate the type of underwear and 
@@ -194,6 +187,14 @@ var external = {};
     neutral: {subject: 'they', object: 'them', prenom_pos: 'their', predic_pos: 'theirs', reflexive: 'themselves'}
   };
 
+  // onLoad
+
+  var oldGameSystem_onAfterLoad = Game_System.prototype.onAfterLoad;
+  Game_System.prototype.onAfterLoad = function() {
+    oldGameSystem_onAfterLoad.call(this);
+
+    autoRun();
+  };
 
   // PLugin commands
 
@@ -212,8 +213,8 @@ var external = {};
       case 'main': // for debugging
         main();
         break;
-      case 'autorun':
-        autoRun(this);
+      case 'initialize':
+        init();
         break;
       case 'start':
         !running && start();
@@ -538,10 +539,16 @@ var external = {};
 
   // == Main ==================================================================
 
-  function autoRun(event)
+  function init()
+  {
+    setSwitch(19, false);
+    halt();
+    autoRun();
+  }
+
+  function autoRun()
   {
     console.log('autorun');
-    $gameMap.eraseEvent(event._eventId);
     var startRunning = evalBool(params['startRunning']) || true;
 
     startRunning = false;
