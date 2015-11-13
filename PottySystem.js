@@ -167,8 +167,9 @@
   var loop = 'blocked';
 
   var timer, current_wear, needW, needM, holdW, holdM, incW, incM, trainW, trainM;
-  var wetSwitch, messySwitch, wearVar, gender, underwearSlot;
+  var wearVar, gender, underwearSlot;
   var armorId = [];
+  var stateSwitch = [];
 
   const FLAGCOUNT = 2; // number of states
 
@@ -240,13 +241,13 @@
         setNeedMess(args[1],true);
         break;
       case 'setwet':
-        setWet(evalBool(args[1]));
+        setState(STATE_WET, evalBool(args[1]));
         break;
       case 'setmessy':
-        setMessy(evalBool(args[1]));
+        setState(STATE_MESSY, evalBool(args[1]));
         break;
       case 'setclean':
-        setClean();
+        setState(STATE_WET | STATE_MESSY, false);
         break;
       case 'iswet':
         setSwitch(Number(args[1]), isState(STATE_WET));
@@ -441,45 +442,18 @@
     $gameParty.gainItem(newArmor,1, true);
     actor.changeEquip(underwearSlot,newArmor); //hardcoded slot
     $gameParty.gainItem(oldArmor,-1,true);
-
   }
 
-  function setWet(set, wear)
+  function setState(state, set, wear)
   {
     set = defValue(set, true);
-    var toSet = wear || current_wear;
-    toSet = setFlag(toSet, STATE_WET, set);
+    var toSet = defValue(wear, current_wear);
+    toSet = setFlag(toSet, state, set);
     if (typeof wear === 'undefined')
     {
       changeUnderwear(toSet);
-      wetSwitch && setSwitch(wetSwitch, set);
-    } else {
-      return toSet;
-    }
-  }
-
-  function setMessy(set, wear)
-  {
-    set = defValue(set, true);
-    var toSet = wear || current_wear;
-    toSet = setFlag(toSet, STATE_MESSY, set);
-    if (typeof wear === 'undefined')
-    {
-      changeUnderwear(toSet);
-      messySwitch && setSwitch(messySwitch, set);
-    } else {
-      return toSet;
-    }
-  }
-  function setClean(wear)
-  {
-    var toSet = wear | current_wear;
-    toSet = setFlag(toSet, STATE_WET | STATE_MESSY, false);
-    if (typeof wear === 'undefined')
-    {
-      changeUnderwear(toSet);
-      wetSwitch && setSwitch(wetSwitch, false);
-      messySwitch && setSwitch(messySwitch, false);
+      stateSwitch[STATE_WET] && setSwitch(stateSwitch(STATE_WET), set);
+      stateSwitch[STATE_MESSY] && setSwitch(stateSwitch(STATE_MESSY), set);
     } else {
       return toSet;
     }
@@ -518,14 +492,14 @@
   function wet() 
   {
     setNeedWet(0);
-    setWet();
+    setState(STATE_WET);
     //console.log('Oops! *wets*');
   }
 
   function mess()
   {
     setNeedMess(0);
-    setMessy();
+    setState(STATE_MESSY);
     //console.log('Oops! *messes*');
   }
 
@@ -548,9 +522,9 @@
 
     //timer = 500;
 
-    wetSwitch   = parseInteger(params['wetSwitch'], 0);
-    messySwitch = parseInteger(params['messySwitch'], 0);
-    wearVar     = parseInteger(params['underwearVar'], 0);
+    stateSwitch[STATE_WET]   = parseInteger(params['wetSwitch'], 0);
+    stateSwitch[STATE_MESSY] = parseInteger(params['messySwitch'], 0);
+    wearVar                  = parseInteger(params['underwearVar'], 0);
 
     armorId[0] = parseInteger(params['equimentId'], 0);
     armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
