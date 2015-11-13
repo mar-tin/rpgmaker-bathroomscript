@@ -212,6 +212,7 @@
         main();
         break;
       case 'initialize':
+      case 'init':
         init();
         break;
       case 'start':
@@ -264,25 +265,38 @@
 
   // == Utilities =============================================================
 
+  // Deal with Input
+
+  function defValue(val,def)
+  {
+    return (typeof val !== 'undefined') ? val : def;
+  }
+
+  function parseInput(input, def)
+  {
+    parseInteger(params[input], def);
+  }
+
+  function isInt(n)
+  {
+    return !isNaN(Number(n)) && n % 1 === 0;
+  }
+
   function parseInteger(num, def)
   {
     return isInt(num) ? Number(num) : def;
   }
 
+  function evalBool(b)
+  {
+    return typeof b !== 'undefined' && ( b.toLowerCase() === 'false' || b === '0' ) ? false : true;
+  }
+
+  // Random
+
   function chance(perc)
   {
     return (rnd(99) < perc);
-  }
-
-  function getFeelReq(need)
-  {
-    return (need < 0.10446 || need > 1) ? 1 : 5.755 * Math.pow(need, 4) -10.619 * Math.pow(need, 3) +4.984 * Math.pow(need, 2) -1.091 * need +1.071;
-  }
-
-  function getFeelRnd(train)
-  {
-    var t = train/100;
-    return Math.pow(Math.random(), 1.5 * (1-Math.pow(t, 2)) + 0.5) * (0.9 * t + 0.1);
   }
 
   function rnd(a,b)
@@ -300,32 +314,22 @@
     return Math.floor(Math.random() * (max-min+1)) + min;
   }
 
-  function evalBool(b)
+  function getFeelReq(need)
   {
-    return typeof b === 'undefined' || b.toLowerCase() === 'false' || b === '0' ? false : true;
+    return (need < 0.10446 || need > 1) ? 1 : 5.755 * Math.pow(need, 4) -10.619 * Math.pow(need, 3) +4.984 * Math.pow(need, 2) -1.091 * need +1.071;
   }
 
-  function isInt(n)
+  function getFeelRnd(train)
   {
-    return !isNaN(Number(n)) && n % 1 === 0;
+    var t = train/100;
+    return Math.pow(Math.random(), 1.5 * (1-Math.pow(t, 2)) + 0.5) * (0.9 * t + 0.1);
   }
+
+  // Game Variables and Switches
 
   function getSwitch(n)
   {
     return JSON.stringify($gameSwitches._data[n]) === 'true';
-  }
-
-  function getVar(num)
-  {
-    return $gameVariables.value(num);
-  }
-
-  function getArmor(wear, gndr)
-  {
-    gndr = typeof gndr === 'undefined' ? gender : gndr;
-    wear = typeof wear === 'undefined' ? current_wear : wear;
-
-    return $dataArmors[armorId[gndr] + wear];
   }
 
   function setSwitch(n, value)
@@ -338,6 +342,11 @@
     }
   }
 
+  function getVar(num)
+  {
+    return $gameVariables.value(num);
+  }
+
   function setVar(n, value)
   {
     if (isInt(n) && isInt(value))
@@ -345,6 +354,16 @@
       $gameVariables.setValue(n,Number(value));
     }
   }
+
+  function getArmor(wear, gndr)
+  {
+    gndr = defValue(gndr, gender);
+    wear = defValue(wear, current_wear);
+
+    return $dataArmors[armorId[gndr] + wear];
+  }
+
+  // Set and unset flags on objects
 
   function setFlag(obj, flag, set)
   {
@@ -355,13 +374,13 @@
 
   function isState(state, wear)
   {
-    wear = typeof wear === 'undefined' ? current_wear : wear ;
+    wear = defValue(wear, current_wear);
     return((wear & state) === state);
   }
 
   function isUnderwear(type, wear)
   {
-    wear = typeof wear === 'undefined' ? current_wear : wear ;
+    wear = defValue(wear, current_wear);
     return (type>>FLAGCOUNT === wear>>FLAGCOUNT);
   }
 
@@ -427,7 +446,7 @@
 
   function setWet(set, wear)
   {
-    set = typeof set !== 'undefined' ? set : true;
+    set = defValue(set, true);
     var toSet = wear || current_wear;
     toSet = setFlag(toSet, STATE_WET, set);
     if (typeof wear === 'undefined')
@@ -441,7 +460,7 @@
 
   function setMessy(set, wear)
   {
-    set = typeof set !== 'undefined' ? set : true;
+    set = defValue(set, true);
     var toSet = wear || current_wear;
     toSet = setFlag(toSet, STATE_MESSY, set);
     if (typeof wear === 'undefined')
@@ -522,29 +541,22 @@
   function autoRun()
   {
     console.log('autorun');
-    var startRunning = evalBool(params['startRunning']) || true;
+    var startRunning = evalBool(params['startRunning']);
 
     timer = params['timer'] || 20;
     timer =   parseInteger(timer, 20) * 1000;
 
     //timer = 500;
 
-    wetSwitch   = params['wetSwitch']    || 0;
-    wetSwitch   =   parseInteger(wetSwitch, 0);
-    messySwitch = params['messySwitch']  || 0;
-    messySwitch =   parseInteger(messySwitch, 0);
-    wearVar     = params['underwearVar'] || 0;
-    wearVar     =   parseInteger(wearVar, 0);
+    wetSwitch   = parseInteger(params['wetSwitch'], 0);
+    messySwitch = parseInteger(params['messySwitch'], 0);
+    wearVar     = parseInteger(params['underwearVar'], 0);
 
-    armorId[0] = params['equimentId'] || 0;
-    armorId[0] =   parseInteger(armorId[0], 0);
-    armorId[1] = params['idOffsetFemale'] || 0;
-    armorId[1] =   parseInteger(armorId[1], 0) + armorId[0];
-    armorId[2] = params['idOffsetGeneric'] || 0;
-    armorId[2] =   parseInteger(armorId[2], 0) + armorId[0];
+    armorId[0] = parseInteger(params['equimentId'], 0);
+    armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
+    armorId[2] = parseInteger(params['idOffsetGeneric'], 0) + armorId[0];
 
-    underwearSlot = params['underwearSlot'] || 5;
-    underwearSlot =   parseInteger(underwearSlot, 5)-1;
+    underwearSlot = parseInteger(params['underwearSlot'], 5)-1;
     
     if (!getSwitch(19))
     {
@@ -553,25 +565,18 @@
       needW = 0;
       needM = 0;
 
-      holdW = params['holdW'] || 100;
-      holdW =   parseInteger(holdW, 100);
-      holdM = params['holdM'] || 150;
-      holdM =   parseInteger(holdM, 150);
+      holdW = parseInteger(params['holdW'], 100);
+      holdM = parseInteger(params['holdM'], 150);
 
-      trainW = params['trainW'] || 40;
-      trainW =   parseInteger(trainW, 40);
-      trainM = params['trainM'] || 40;
-      trainM =   parseInteger(trainM, 40);
+      trainW = parseInteger(params['trainW'], 40);
+      trainM = parseInteger(params['trainM'], 40);
 
-      incW = params['wetInc']  || 5;
-      incW =   parseInteger(incW, 5);
-      incM = params['messInc'] || 5;
-      incM =   parseInteger(incM, 5);
+      incW = parseInteger(params['wetInc'], 5);
+      incM = parseInteger(params['messInc'], 5);
 
-      current_wear = params['defaultWear'] || 0;
-      current_wear =   parseInteger(current_wear, 0)<<FLAGCOUNT;
+      current_wear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
 
-      gender = params['defaultGender'];
+      gender = parseInteger(params['defaultGender'],0);
 
       setSwitch(19, true);
       setVar(20, current_wear);
