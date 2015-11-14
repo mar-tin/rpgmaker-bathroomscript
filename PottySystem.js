@@ -108,10 +108,9 @@
  * <> is mandatory input
  * [] is optional input
  * 
- * PottySystem autorun
- * Makes sure the PottySystem runs, needs to be called at least once after 
- * starting and each savegame load. (Easiest way to do that is add an event
- * as described above.)
+ * PottySystem init
+ * Initialize the pottysystem the first time, needs to be run once when a new
+ * game is started
  * 
  * PottySystem start
  * Starts the main loop at the set time interval.
@@ -120,40 +119,27 @@
  * Stops the main loop. All commands will still work but bladder won't fill, it 
  * won't trigger automaticlly feeling the need to go and having accidents.
  * 
- * PottySystem wet
- * manually triggers wetting event;
- * 
- * PottySystem mess
- * Manually triggers messing event
+ * PottySystem accident <wet/messy>
+ * Trigger a wet or messy accident.
  * 
  * PottySystem setWear <type>
  * Set current type of underwear: 
  * 0 = undies, 1 = pullups, 2 = diapers
  * 
- * PottySystem setNeedWet <need>
- * Set or change the current need to pee. 
+ * PottySystem setNeed <wet/messy> <need>
+ * Set or change the current need to pee or poop. 
  * To set enter a number, to change use + or - as the first character.
  * 
- * PottySystem setNeedMess <need>
- * Set or change the current need to poop.
- * To set enter a number, to change use + or - as the first character.
- * 
- * PottySystem setWet [boolean]
- * Change the current state of the underwear to be or no longer be wet
+ * PottySystem setState <wet/messy/clean> [boolean]
+ * Change the current state of the underwear to be or no longer be wet or messy
  * If no value is provided true is assumed. valid values: true,false,0,1
  * 
- * PottySystem setMessy [boolean]
- * Change the current state of the underwear to be or no longer be messy
- * If no value is provided true is assumed. valid values: true,false,0,1
+ * PottySystem isState <wet/messy> <switch>
+ * Sets the provided switch number to the current state.
  * 
- * PottySystem setClean
- * Change the current state of the underwear to be clean (not wet ond not messy)
- * 
- * PottySystem isWet <switch>
- * Sets the provided switch number to the current wetness state.
- * 
- * PottySystem isMessy <switch>
- * Sets the provided switch number to the current messyness state.
+ * PottySystem setGender [gender]
+ * Sets the gender of the character with respect to this script. Changes the 
+ * items and pronouns used.
  */
 //===============================================================================;
 
@@ -166,10 +152,9 @@
   var running = false;
   var loop = 'blocked';
 
-  var timer, current_wear, needW, needM, holdW, holdM, incW, incM, trainW, trainM;
-  var wearVar, gender, underwearSlot;
-  var armorId = [];
-  var stateSwitch = [];
+  var store; // All vars that are stored.
+  
+  var storageVars,stateSwitch, armorId, timer, wearVar, underwearSlot;
 
   const FLAGCOUNT = 2; // number of states
 
@@ -204,6 +189,16 @@
     aliasPluginCommand.call(this, command, args);
     if (command === 'PottySystem')
     {
+      let state = 0;
+      if (typeof args[1] !== 'undefined' && args[1].toLowerCase() === 'wet') 
+      {
+        state = STATE_WET;
+      }
+      if (typeof args[1] !== 'undefined' && args[1].toLowerCase() === 'messy' || 
+          args[1].toLowerCase() === 'mess') 
+      {
+        state = STATE_MESSY;
+      }
       switch(args[0].toLowerCase())
       {
       case 'debug': // for debugging
@@ -222,38 +217,30 @@
       case 'stop':
         halt();
         break;
-      case 'wet':
-        wet();
-        break;
-      case 'mess':
-        mess();
+      case 'accident':
+        accident(state);
         break;
       case 'setwear':
-        setWear(parseInteger(args[1],current_wear>>FLAGCOUNT));
+        setWear(parseInteger(args[1],store.current_wear>>FLAGCOUNT));
+        break;
+      case 'setneed':
+        setNeed(state,args[2],true);
+        break;
+      case 'setstate':
+        if (state !== 0) {setState(state, evalBool(args[2]));}
+        else if(args[1].toLowerCase() === 'clean') 
+        {
+          setState(STATE_WET | STATE_MESSY, false);
+        }
+        break;
+      case 'isstate':
+        if (parseInteger(args[2],0) > 0) 
+        {
+          setSwitch(parseInt(args[2]), isState(state));
+        }
         break;
       case 'setgender':
-        setGender(parseInteger(args[1], gender));
-        break;
-      case 'setneedwet':
-        setNeedWet(args[1],true);
-        break;
-      case 'setneedmess':
-        setNeedMess(args[1],true);
-        break;
-      case 'setwet':
-        setState(STATE_WET, evalBool(args[1]));
-        break;
-      case 'setmessy':
-        setState(STATE_MESSY, evalBool(args[1]));
-        break;
-      case 'setclean':
-        setState(STATE_WET | STATE_MESSY, false);
-        break;
-      case 'iswet':
-        setSwitch(Number(args[1]), isState(STATE_WET));
-        break;
-      case 'ismessy':
-        setSwitch(Number(args[1]), isState(STATE_MESSY));
+        setGender(parseInteger(args[1], store.gender));
         break;
       default:
         $gameMessage.add('PottySystem ' + args[0] + ' is an unknown command');
@@ -271,11 +258,6 @@
   function defValue(val,def)
   {
     return (typeof val !== 'undefined') ? val : def;
-  }
-
-  function parseInput(input, def)
-  {
-    parseInteger(params[input], def);
   }
 
   function isInt(n)
@@ -358,8 +340,8 @@
 
   function getArmor(wear, gndr)
   {
-    gndr = defValue(gndr, gender);
-    wear = defValue(wear, current_wear);
+    gndr = defValue(gndr, store.gender);
+    wear = defValue(wear, store.current_wear);
 
     return $dataArmors[armorId[gndr] + wear];
   }
@@ -375,13 +357,13 @@
 
   function isState(state, wear)
   {
-    wear = defValue(wear, current_wear);
+    wear = defValue(wear, store.current_wear);
     return((wear & state) === state);
   }
 
   function isUnderwear(type, wear)
   {
-    wear = defValue(wear, current_wear);
+    wear = defValue(wear, store.current_wear);
     return (type>>FLAGCOUNT === wear>>FLAGCOUNT);
   }
 
@@ -389,53 +371,39 @@
 
   function setGender(gndr)
   {
-    gender = gndr;
-    setVar(11,gender); //changing gender breaks changeUnderwear
+    store.gender = gndr;
+    setVar(11,store.gender); //changing gender breaks changeUnderwear
   }
 
   function setWear(wear, preserveState)
   {
     if (typeof preserveState !== 'undefined' && preserveState === true)
     {
-      wear = wear | (current_wear & (STATE_WET | STATE_MESSY));
+      wear = wear | (store.current_wear & (STATE_WET | STATE_MESSY));
     }
 
     wearVar && $gameVariables.setValue(wearVar, wear<<FLAGCOUNT);
     changeUnderwear(wear<<FLAGCOUNT);
   }
 
-  function setNeedWet(need, rel)
+  function setNeed(state, nd, rel)
   {
     if ((typeof rel !== 'undefined' && rel === true) || 
-        typeof need === 'string' && 
-        (need.charAt(0) == '+' || need.charAt(0) == '-'))
+        typeof nd === 'string' && 
+        (nd.charAt(0) == '+' || nd.charAt(0) == '-'))
     {
-      needW += Number(need);
+      store.need[state] += Number(nd);
     } else {
-      needW = Number(need);
+      store.need[state] = Number(nd);
     }
 
-    setVar(19,needW);
-  }
-
-  function setNeedMess(need, rel)
-  {
-    if ((typeof rel !== 'undefined' && rel === true) || 
-        typeof need === 'string' && 
-        (need.charAt(0) == '+' || need.charAt(0) == '-'))
-    {
-      needM += Number(need);
-    } else {
-      needM = Number(need);
-    }
-
-    setVar(18,needM);
+    setVar(storageVars.need[state],store.need[state]);
   }
 
   function changeUnderwear(newWear)
   {
-    current_wear = newWear;
-    setVar(20, current_wear);
+    store.current_wear = newWear;
+    setVar(20, store.current_wear);
     var actor = $gameParty.leader();
     var oldArmor = actor.equips()[underwearSlot]; // hardcoded slot
     var newArmor = getArmor();
@@ -447,7 +415,7 @@
   function setState(state, set, wear)
   {
     set = defValue(set, true);
-    var toSet = defValue(wear, current_wear);
+    var toSet = defValue(wear, store.current_wear);
     toSet = setFlag(toSet, state, set);
     if (typeof wear === 'undefined')
     {
@@ -459,48 +427,30 @@
     }
   }
 
+  // == Messages ==============================================================
+
   // == Events ================================================================
 
   function feel(type)
   {
-    var rtn = {wet: false, messy: false};
-    if (type & STATE_WET)
+
+    for(let stateBit = 0; stateBit<FLAGCOUNT; stateBit++)
     {
-      var tempRnd = getFeelRnd(trainW);
-      //console.log(needW/holdW + ' ' + getFeelReq(needW/holdW) + ' ' + tempRnd);
-      if(getFeelReq(needW/holdW) < tempRnd)
+      let state = 1<<stateBit;
+      if (type & state)
       {
-        //console.log('I need to pee');
-        rtn.wet = true;
-        //$gameMessage.add('I have to pee');
+        if (getFeelReq(store.need[state]/store.hold[state]) < getFeelRnd(store.train[state]))
+        {
+          console.log(`I have to ${state}`);
+        }
       }
     }
-
-    if (type & STATE_MESSY)
-    {
-      if(getFeelReq(needM/holdM) < getFeelRnd(trainM))
-      {
-        //console.log('I need to Poop');
-        rtn.messy = true;
-        //$gameMessage.add('I have to poop');
-      }
-    }
-
-    return rtn;
   }
 
-  function wet() 
+  function accident(state)
   {
-    setNeedWet(0);
-    setState(STATE_WET);
-    //console.log('Oops! *wets*');
-  }
-
-  function mess()
-  {
-    setNeedMess(0);
-    setState(STATE_MESSY);
-    //console.log('Oops! *messes*');
+    setNeed(state, 0);
+    setState(state);
   }
 
   // == Main ==================================================================
@@ -517,15 +467,14 @@
     console.log('autorun');
     var startRunning = evalBool(params['startRunning']);
 
-    timer = params['timer'] || 20;
-    timer =   parseInteger(timer, 20) * 1000;
+    timer = (!isNaN(params['timer']) ? params['timer'] : 20) * 1000;
 
-    //timer = 500;
-
+    stateSwitch = [];
     stateSwitch[STATE_WET]   = parseInteger(params['wetSwitch'], 0);
     stateSwitch[STATE_MESSY] = parseInteger(params['messySwitch'], 0);
     wearVar                  = parseInteger(params['underwearVar'], 0);
 
+    armorId = [];
     armorId[0] = parseInteger(params['equimentId'], 0);
     armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
     armorId[2] = parseInteger(params['idOffsetGeneric'], 0) + armorId[0];
@@ -536,33 +485,38 @@
     {
       console.log('init');
 
-      needW = 0;
-      needM = 0;
+      storageVars = {need: []};
+      storageVars.need[STATE_WET] = 19;
+      storageVars.need[STATE_MESSY] = 18;
 
-      holdW = parseInteger(params['holdW'], 100);
-      holdM = parseInteger(params['holdM'], 150);
+      store = {need: [], hold: [], train: [], inc: []};
+      store.need[STATE_WET] = 0;
+      store.need[STATE_MESSY] = 0;
 
-      trainW = parseInteger(params['trainW'], 40);
-      trainM = parseInteger(params['trainM'], 40);
+      store.hold[STATE_WET] = parseInteger(params['holdW'], 100);
+      store.hold[STATE_MESSY] = parseInteger(params['holdM'], 150);
 
-      incW = parseInteger(params['wetInc'], 5);
-      incM = parseInteger(params['messInc'], 5);
+      store.train[STATE_WET] = parseInteger(params['trainW'], 40);
+      store.train[STATE_MESSY] = parseInteger(params['trainM'], 40);
 
-      current_wear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
+      store.inc[STATE_WET] = parseInteger(params['wetInc'], 5);
+      store.inc[STATE_MESSY] = parseInteger(params['messInc'], 5);
 
-      gender = parseInteger(params['defaultGender'],0);
+      store.current_wear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
+
+      store.gender = parseInteger(params['defaultGender'],0);
 
       setSwitch(19, true);
-      setVar(20, current_wear);
-      setVar(19, needW);
-      setVar(18, needM);
-      setVar(17, holdW);
-      setVar(16, holdM);
-      setVar(15, trainW);
-      setVar(14, trainM);
-      setVar(13, incW );
-      setVar(12, incM );
-      setVar(11, gender);
+      setVar(20, store.current_wear);
+      setVar(19, store.need[STATE_WET]);
+      setVar(18, store.need[STATE_MESSY]);
+      setVar(17, store.hold[STATE_WET]);
+      setVar(16, store.hold[STATE_MESSY]);
+      setVar(15, store.train[STATE_WET]);
+      setVar(14, store.train[STATE_MESSY]);
+      setVar(13, store.inc[STATE_WET] );
+      setVar(12, store.inc[STATE_MESSY] );
+      setVar(11, store.gender);
 
       if (startRunning)
       {
@@ -575,16 +529,16 @@
         !running && start() || running && halt();
       }
 
-      current_wear = getVar(20);
-      needW        = getVar(19);
-      needM        = getVar(18);
-      holdW        = getVar(17);
-      holdM        = getVar(16);
-      trainW       = getVar(15);
-      trainM       = getVar(14);
-      incW         = getVar(13);
-      incM         = getVar(12);
-      gender       = getVar(11);
+      store.current_wear       = getVar(20);
+      store.need[STATE_WET]    = getVar(19);
+      store.need[STATE_MESSY]  = getVar(18);
+      store.hold[STATE_WET]    = getVar(17);
+      store.hold[STATE_MESSY]  = getVar(16);
+      store.train[STATE_WET]   = getVar(15);
+      store.train[STATE_MESSY] = getVar(14);
+      store.inc[STATE_WET]     = getVar(13);
+      store.inc[STATE_MESSY]   = getVar(12);
+      store.gender             = getVar(11);
     }
 
   }
@@ -617,16 +571,16 @@
   function main()
   {
     // Increase need
-    setNeedWet (rnd(1,incW),true);
-    setNeedMess(rnd(1,incM),true);
+    setNeed(STATE_WET,rnd(1,store.inc[STATE_WET]),true);
+    setNeed(STATE_MESSY,rnd(1,store.inc[STATE_MESSY]),true);
 
     // Check if feel
     feel(STATE_WET | STATE_MESSY);
 
     // Check if accident
 
-    if (needW > holdW) {wet();}
-    if (needM > holdM) {mess();}
+    if (store.need[STATE_WET] > store.hold[STATE_WET]) {accident(STATE_WET);}
+    if (store.need[STATE_MESSY] > store.hold[STATE_MESSY]) {accident(STATE_MESSY);}
 
     // Reset loop
     loop = setTimeout(main, timer);
@@ -637,7 +591,7 @@
 
   function debug()
   {
-    //console.log(getVar(2));
+    
 
   }
 
