@@ -194,8 +194,8 @@
       {
         state = STATE_WET;
       }
-      if (typeof args[1] !== 'undefined' && args[1].toLowerCase() === 'messy' || 
-          args[1].toLowerCase() === 'mess') 
+      if (typeof args[1] !== 'undefined' && (args[1].toLowerCase() === 'messy' || 
+          args[1].toLowerCase() === 'mess')) 
       {
         state = STATE_MESSY;
       }
@@ -545,8 +545,11 @@
 
   function start()
   {
-    setSwitch(20, true);
-    (running = true) && (loop = 'pending') && main();
+    if(!running)
+    {
+      setSwitch(20, true);
+      (running = true) && (loop = 'pending') && main();
+    }
     // console.log('Start: ' + running + ' ' + loop);
 
     return true; // Or it will be killed in the autoRun fn.
