@@ -59,10 +59,15 @@
  * @desc how much max (random number between 0 and this number) to 
  * add each loop to the need to poop.
  * @default 15
+ * 
+ * @param wetEvent
+ * @desc Common event to call when there is a wetting accident
+ * 
+ * @param messEvent
+ * @desc Common event to call when there is a messing accident
  *
  * @param equimentId
  * @desc Number of the first underwear (Clean Undies) See help.
- * @default 0
  * 
  * @param idOffsetFemale
  * @desc Offset for the first female armor items from the default
@@ -77,7 +82,7 @@
  * @param underwearSlot
  * @desc Number of the underwear slot, found in Database->Types
  * ->Equipment Types, if it doesn't exist create one.
- * @default 5
+ * @default 0
  * 
  * @param defaultGender
  * @desc Default gender used unless set elsewhere via commands.
@@ -154,7 +159,7 @@
 
   var store; // All vars that are stored.
   
-  var storageVars,stateSwitch, armorId, timer, wearVar, underwearSlot;
+  var storageVars,stateSwitch, armorId, timer, wearVar, underwearSlot, events;
 
   const FLAGCOUNT = 2; // number of states
 
@@ -194,8 +199,9 @@
       {
         state = STATE_WET;
       }
-      if (typeof args[1] !== 'undefined' && (args[1].toLowerCase() === 'messy' || 
-          args[1].toLowerCase() === 'mess')) 
+      if (typeof args[1] !== 'undefined' && 
+          (args[1].toLowerCase() === 'messy' || 
+           args[1].toLowerCase() === 'mess')) 
       {
         state = STATE_MESSY;
       }
@@ -221,10 +227,19 @@
         accident(state);
         break;
       case 'setwear':
-        setWear(parseInteger(args[1],store.current_wear>>FLAGCOUNT));
+        setWear(parseInteger(args[1],store.currentWear>>FLAGCOUNT));
         break;
       case 'setneed':
-        setNeed(state,args[2],true);
+        setNeed(state,args[2],true); // to sanitize
+        break;
+      case 'sethold':
+        setHold(state,args[2]); // to sanitize
+        break;
+      case 'settrain':
+        setTrain(state,args[2]); // to sanitize
+        break;
+      case 'setinc':
+        setInc(state,args[2]); // to sanitize
         break;
       case 'setstate':
         if (state !== 0) {setState(state, evalBool(args[2]));}
@@ -272,7 +287,12 @@
 
   function evalBool(b)
   {
-    return typeof b !== 'undefined' && ( b.toLowerCase() === 'false' || b === '0' ) ? false : true;
+    if (typeof b !== 'undefined' && (b.toLowerCase() === 'false' || b === '0'))
+    {
+      return false;
+    } else {
+      return true;
+    }
   }
 
   // Random
@@ -299,7 +319,22 @@
 
   function getFeelReq(need)
   {
-    return (need < 0.10446 || need > 1) ? 1 : 5.755 * Math.pow(need, 4) -10.619 * Math.pow(need, 3) +4.984 * Math.pow(need, 2) -1.091 * need +1.071;
+    // lookup on a polinomial curve capped at 1.
+    if (need < 0.10446)
+    {
+      return 1;
+    } else if (need > 1) {
+      return 0.1;
+    } else {
+      // p are values for the polynomial;
+      let p = [];
+      p[4] =  5.755;
+      p[3] = -10.619;
+      p[2] =  4.984;
+      p[1] = -1.091;
+      p[0] =  1.071;
+      return p[4] * Math.pow(need, 4) + p[3] * Math.pow(need, 3) + p[2] * Math.pow(need, 2) + p[1] * need + p[0];
+    }
   }
 
   function getFeelRnd(train)
@@ -340,8 +375,12 @@
 
   function getArmor(wear, gndr)
   {
+    if(typeof wear === 'undefined')
+    {
+      return $gameParty.leader().equips()[underwearSlot];
+    }
+
     gndr = defValue(gndr, store.gender);
-    wear = defValue(wear, store.current_wear);
 
     return $dataArmors[armorId[gndr] + wear];
   }
@@ -357,13 +396,13 @@
 
   function isState(state, wear)
   {
-    wear = defValue(wear, store.current_wear);
+    wear = defValue(wear, store.currentWear);
     return((wear & state) === state);
   }
 
   function isUnderwear(type, wear)
   {
-    wear = defValue(wear, store.current_wear);
+    wear = defValue(wear, store.currentWear);
     return (type>>FLAGCOUNT === wear>>FLAGCOUNT);
   }
 
@@ -379,7 +418,7 @@
   {
     if (typeof preserveState !== 'undefined' && preserveState === true)
     {
-      wear = wear | (store.current_wear & (STATE_WET | STATE_MESSY));
+      wear = wear | (store.currentWear & (STATE_WET | STATE_MESSY));
     }
 
     wearVar && $gameVariables.setValue(wearVar, wear<<FLAGCOUNT);
@@ -400,22 +439,47 @@
     setVar(storageVars.need[state],store.need[state]);
   }
 
+  function setHold(state, hold)
+  {
+    store.hold[state] = hold;
+    setVar(storageVars.hold[state], hold);
+  }
+
+  function setTrain(state, train)
+  {
+    store.train[state] = train;
+    setVar(storageVars.train[state], train);
+  }
+
+  function setInc(state, inc)
+  {
+    store.inc[state] = inc;
+    setVar(storageVars.inc[state], inc);
+  }
+
   function changeUnderwear(newWear)
   {
-    store.current_wear = newWear;
-    setVar(20, store.current_wear);
-    var actor = $gameParty.leader();
-    var oldArmor = actor.equips()[underwearSlot]; // hardcoded slot
-    var newArmor = getArmor();
+    // if all flags are cleared we treat it as a change wearGender is updated
+    // if not then the wearGender is kept the same so it's not changed when
+    // having an accident.
+    if ((newWear & (1<<FLAGCOUNT) -1) === 0)
+    {
+      store.genderWear = store.gender;
+      setVar(10, store.genderWear);
+    }
+    store.currentWear = newWear;
+    setVar(20, store.currentWear);
+    var oldArmor = getArmor();
+    var newArmor = getArmor(newWear, store.genderWear);
     $gameParty.gainItem(newArmor,1, true);
-    actor.changeEquip(underwearSlot,newArmor); //hardcoded slot
+    $gameParty.leader().changeEquip(underwearSlot,newArmor);
     $gameParty.gainItem(oldArmor,-1,true);
   }
 
   function setState(state, set, wear)
   {
     set = defValue(set, true);
-    var toSet = defValue(wear, store.current_wear);
+    var toSet = defValue(wear, store.currentWear);
     toSet = setFlag(toSet, state, set);
     if (typeof wear === 'undefined')
     {
@@ -441,7 +505,7 @@
       {
         if (getFeelReq(store.need[state]/store.hold[state]) < getFeelRnd(store.train[state]))
         {
-          console.log(`I have to ${state}`);
+          //console.log(`I have to ${state}`);
         }
       }
     }
@@ -451,6 +515,7 @@
   {
     setNeed(state, 0);
     setState(state);
+    $gameTemp.reserveCommonEvent(events[state]);
   }
 
   // == Main ==================================================================
@@ -474,20 +539,37 @@
     stateSwitch[STATE_MESSY] = parseInteger(params['messySwitch'], 0);
     wearVar                  = parseInteger(params['underwearVar'], 0);
 
+    events = [];
+    events[STATE_WET] = parseInteger(params['wetEvent']);
+    events[STATE_MESSY] = parseInteger(params['messEvent']);
+
     armorId = [];
     armorId[0] = parseInteger(params['equimentId'], 0);
     armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
     armorId[2] = parseInteger(params['idOffsetGeneric'], 0) + armorId[0];
 
     underwearSlot = parseInteger(params['underwearSlot'], 5)-1;
+    if (underwearSlot === -1) {console.log('underwearSlot could not be read,' + 
+        ' please check and make sure it\'s only a number');}
     
+    var firstVar = 10; //temp until param
+
+    storageVars = {need: [], hold: [], train: [], inc: []};
+    storageVars.currentWear = firstVar + 10;
+    storageVars.need[STATE_WET] = firstVar + 9;
+    storageVars.need[STATE_MESSY] = firstVar + 8;
+    storageVars.hold[STATE_WET] = firstVar + 7;
+    storageVars.hold[STATE_MESSY] = firstVar + 6;
+    storageVars.train[STATE_WET] = firstVar + 5;
+    storageVars.train[STATE_MESSY] = firstVar + 4;
+    storageVars.inc[STATE_WET] = firstVar + 3;
+    storageVars.inc[STATE_MESSY] = firstVar + 2;
+    storageVars.gender = firstVar + 1;
+    storageVars.genderWear = firstVar + 0;
+
     if (!getSwitch(19))
     {
       console.log('init');
-
-      storageVars = {need: []};
-      storageVars.need[STATE_WET] = 19;
-      storageVars.need[STATE_MESSY] = 18;
 
       store = {need: [], hold: [], train: [], inc: []};
       store.need[STATE_WET] = 0;
@@ -502,21 +584,24 @@
       store.inc[STATE_WET] = parseInteger(params['wetInc'], 5);
       store.inc[STATE_MESSY] = parseInteger(params['messInc'], 5);
 
-      store.current_wear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
+      store.currentWear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
 
       store.gender = parseInteger(params['defaultGender'],0);
+      store.genderWear = store.gender;
 
       setSwitch(19, true);
-      setVar(20, store.current_wear);
-      setVar(19, store.need[STATE_WET]);
-      setVar(18, store.need[STATE_MESSY]);
-      setVar(17, store.hold[STATE_WET]);
-      setVar(16, store.hold[STATE_MESSY]);
-      setVar(15, store.train[STATE_WET]);
-      setVar(14, store.train[STATE_MESSY]);
-      setVar(13, store.inc[STATE_WET] );
-      setVar(12, store.inc[STATE_MESSY] );
-      setVar(11, store.gender);
+      setVar(storageVars.currentWear, store.currentWear);
+      setVar(storageVars.need[STATE_WET], store.need[STATE_WET]);
+      setVar(storageVars.need[STATE_MESSY], store.need[STATE_MESSY]);
+      setVar(storageVars.hold[STATE_WET], store.hold[STATE_WET]);
+      setVar(storageVars.hold[STATE_MESSY], store.hold[STATE_MESSY]);
+      setVar(storageVars.train[STATE_WET], store.train[STATE_WET]);
+      setVar(storageVars.train[STATE_MESSY], store.train[STATE_MESSY]);
+      setVar(storageVars.inc[STATE_WET], store.inc[STATE_WET]);
+      setVar(storageVars.inc[STATE_MESSY], store.inc[STATE_MESSY]);
+      setVar(storageVars.gender, store.gender);
+      setVar(storageVars.genderWear, store.genderWear);
+
 
       if (startRunning)
       {
@@ -529,16 +614,17 @@
         !running && start() || running && halt();
       }
 
-      store.current_wear       = getVar(20);
-      store.need[STATE_WET]    = getVar(19);
-      store.need[STATE_MESSY]  = getVar(18);
-      store.hold[STATE_WET]    = getVar(17);
-      store.hold[STATE_MESSY]  = getVar(16);
-      store.train[STATE_WET]   = getVar(15);
-      store.train[STATE_MESSY] = getVar(14);
-      store.inc[STATE_WET]     = getVar(13);
-      store.inc[STATE_MESSY]   = getVar(12);
-      store.gender             = getVar(11);
+      store.currentWear        = getVar(storageVars.currentWear);
+      store.need[STATE_WET]    = getVar(storageVars.need[STATE_WET]);
+      store.need[STATE_MESSY]  = getVar(storageVars.need[STATE_MESSY]);
+      store.hold[STATE_WET]    = getVar(storageVars.hold[STATE_WET]);
+      store.hold[STATE_MESSY]  = getVar(storageVars.hold[STATE_MESSY]);
+      store.train[STATE_WET]   = getVar(storageVars.train[STATE_WET]);
+      store.train[STATE_MESSY] = getVar(storageVars.train[STATE_MESSY]);
+      store.inc[STATE_WET]     = getVar(storageVars.inc[STATE_WET]);
+      store.inc[STATE_MESSY]   = getVar(storageVars.inc[STATE_MESSY]);
+      store.gender             = getVar(storageVars.gender);
+      store.genderWear         = getVar(storageVars.genderWear);
     }
 
   }
