@@ -567,11 +567,12 @@
     storageVars.gender = firstVar + 1;
     storageVars.genderWear = firstVar + 0;
 
+    store = {need: [], hold: [], train: [], inc: []};
+
     if (!getSwitch(19))
     {
       console.log('init');
 
-      store = {need: [], hold: [], train: [], inc: []};
       store.need[STATE_WET] = 0;
       store.need[STATE_MESSY] = 0;
 
