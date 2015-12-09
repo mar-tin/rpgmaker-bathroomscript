@@ -154,12 +154,12 @@
 
   var params = PluginManager.parameters('PottySystem');
 
-  var running = false;
-  var loop = 'blocked';
+  var loop = null;
 
   var store; // All vars that are stored.
   
   var storageVars,stateSwitch, armorId, timer, wearVar, underwearSlot, events;
+  var $ = {};
 
   const FLAGCOUNT = 2; // number of states
 
@@ -213,12 +213,11 @@
       case 'main': // for debugging
         main();
         break;
-      case 'initialize':
-      case 'init':
-        init();
+      case 'register':
+        register(args.slice(1));
         break;
       case 'start':
-        !running && start();
+        !$.system.running && start();
         break;
       case 'stop':
         halt();
@@ -520,16 +519,45 @@
 
   // == Main ==================================================================
 
-  function init()
+  function register(args)
   {
-    setSwitch(19, false);
-    halt();
-    autoRun();
+    var actors = [];
+    if(args.length == 0)
+    {
+      actors = $gameParty._actors;
+    } else {
+      args.forEach(function(val)
+      {
+        let clean = val.replace(/\W/g, '').toLowerCase();
+        if (clean !== '' && (isInt(clean) || clean == 'l'))
+        {
+          actors.push(clean);
+        }
+      });
+
+    }
   }
 
   function autoRun()
   {
     console.log('autorun');
+
+    if(typeof $gameSystem._pottySystem === 'undefined')
+    {
+      $gameSystem._pottySystem =  {init: false, running: false, actors: 0};
+    }
+    $.system = $gameSystem._pottySystem;
+    $.actors = [];
+    $gameActors._data.forEach(function(val, index, array)
+    {
+      if(val !== null && typeof val._pottySystem !== 'undefined')
+      {
+        $.actors.push($gameActors._data[index]._pottySystem);
+      } else {
+        $.actors.push(null);
+      }
+    });
+
     var startRunning = evalBool(params['startRunning']);
 
     timer = (!isNaN(params['timer']) ? params['timer'] : 20) * 1000;
@@ -567,11 +595,13 @@
     storageVars.gender = firstVar + 1;
     storageVars.genderWear = firstVar + 0;
 
-    if (!getSwitch(19))
+    store = {need: [], hold: [], train: [], inc: []};
+
+    if (!$.system.init)
     {
       console.log('init');
+      $.system.init = true;
 
-      store = {need: [], hold: [], train: [], inc: []};
       store.need[STATE_WET] = 0;
       store.need[STATE_MESSY] = 0;
 
@@ -589,7 +619,6 @@
       store.gender = parseInteger(params['defaultGender'],0);
       store.genderWear = store.gender;
 
-      setSwitch(19, true);
       setVar(storageVars.currentWear, store.currentWear);
       setVar(storageVars.need[STATE_WET], store.need[STATE_WET]);
       setVar(storageVars.need[STATE_MESSY], store.need[STATE_MESSY]);
@@ -609,9 +638,9 @@
       }
     } else {
       console.log('Already Loaded');
-      if (getSwitch(20) !== running)
+      if (loop == null)
       {
-        !running && start() || running && halt();
+        !$.system.running && start() || $.system.running && halt();
       }
 
       store.currentWear        = getVar(storageVars.currentWear);
@@ -631,12 +660,11 @@
 
   function start()
   {
-    if(!running)
+    if(loop == null)
     {
-      setSwitch(20, true);
-      (running = true) && (loop = 'pending') && main();
+      (loop = 'pending') && ($.system.running = true) && main();    
     }
-    // console.log('Start: ' + running + ' ' + loop);
+    // console.log('Start: ' + $.system.running + ' ' + loop);
 
     return true; // Or it will be killed in the autoRun fn.
   }
@@ -646,15 +674,15 @@
     if (loop !== null)
     {
       clearTimeout(loop);
+      $.system.running = false;
       loop = null;
-      running = false;
     }
     if (loop === 'pending')
     {
       setTimeout(halt, 1000);
     }
 
-    // console.log('Halt: ' + running + ' ' + loop);
+    // console.log('Halt: ' + $.system.running + ' ' + loop);
   }
 
   function main()
@@ -671,8 +699,8 @@
     if (store.need[STATE_WET] > store.hold[STATE_WET]) {accident(STATE_WET);}
     if (store.need[STATE_MESSY] > store.hold[STATE_MESSY]) {accident(STATE_MESSY);}
 
-    // Reset loop
-    loop = setTimeout(main, timer);
+    // Re-set loop if loop is not halted (stop zombies after halt)
+    loop !== null && (loop = setTimeout(main, timer));
   }
 
 
