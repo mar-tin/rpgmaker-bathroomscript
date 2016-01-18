@@ -156,7 +156,7 @@
 
   var loop = null;
   
-  var stateSwitch, armorId, timer, wearVar, underwearSlot, events;
+  var stateSwitch, armorId, timer, wearVar, underwearSlot, events, startRunning;
   var $ = {};
 
   const FLAGCOUNT = 2; // number of states
@@ -174,12 +174,22 @@
     neutral: {subject: 'they', object: 'them', prenom_pos: 'their', predic_pos: 'theirs', reflexive: 'themselves'}
   };
 
-  // onRun
+  // onLoad
 
   var oldGameSystem_onafterload = Game_System.prototype.onAfterLoad;
-  Game_System.prototype.onAfterLoad = function() {
+  Game_System.prototype.onAfterLoad = function()
+  {
     oldGameSystem_onafterload.call(this);
     autoRun();
+  };
+
+  // initSystem
+
+  var oldGameSystem_initialize = Game_System.prototype.initialize;
+  Game_System.prototype.initialize = function()
+  {
+    oldGameSystem_initialize.call(this);
+    systemInit();
   };
 
   // PLugin commands
@@ -529,67 +539,44 @@
     }
   }
 
-  function autoRun()
+  function systemInit()
   {
-    console.log('autorun');
-
     if($gameSystem === null)
     {
-      return 1; //not in a game
-    }
+      // Run once on first load
+      
+      startRunning = evalBool(params['startRunning']);
 
-    if(typeof $gameSystem._pottySystem === 'undefined')
-    {
-      $gameSystem._pottySystem =  {init: false, running: false, actors: 0, need: [], hold: [], train: [], inc: []};
-    }
-    $.system = $gameSystem._pottySystem;
-    $.actors = [];
-    $gameActors._data.forEach(function(val, index, array)
-    {
-      if(val !== null && typeof val._pottySystem !== 'undefined')
+      timer = (!isNaN(params['timer']) ? params['timer'] : 20) * 1000;
+
+      stateSwitch = [];
+      stateSwitch[STATE_WET]   = parseInteger(params['wetSwitch'], 0);
+      stateSwitch[STATE_MESSY] = parseInteger(params['messySwitch'], 0);
+      wearVar                  = parseInteger(params['underwearVar'], 0);
+
+      events = [];
+      events[STATE_WET] = parseInteger(params['wetEvent']);
+      events[STATE_MESSY] = parseInteger(params['messEvent']);
+
+      armorId = [];
+      armorId[0] = parseInteger(params['equimentId'], 0);
+      armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
+      armorId[2] = parseInteger(params['idOffsetGeneric'], 0) + armorId[0];
+
+      underwearSlot = parseInteger(params['underwearSlot'], 5)-1;
+      if (underwearSlot === -1) 
       {
-        $.actors.push($gameActors._data[index]._pottySystem);
-      } else {
-        $.actors.push(null);
+        alert('underwearSlot could not be read,' + 
+          ' please check and make sure it\'s only a number');
       }
-    });
+    } else {
+      // Run each time $gameSystem gets reloaded.
+      $gameSystem._pottySystem = {init: false, running: false, actors: 0, need: [], hold: [], train: [], inc: []};
+      $.system = $gameSystem._pottySystem;
 
+      $.actors = [];
 
-    //temp
-    if(typeof $gameSystem._pottySystem.need == 'undefined')
-    {
-      $.system.need = [];
-      $.system.hold = [];
-      $.system.train = [];
-      $.system.inc = [];
-    }
-
-    var startRunning = evalBool(params['startRunning']);
-
-    timer = (!isNaN(params['timer']) ? params['timer'] : 20) * 1000;
-
-    stateSwitch = [];
-    stateSwitch[STATE_WET]   = parseInteger(params['wetSwitch'], 0);
-    stateSwitch[STATE_MESSY] = parseInteger(params['messySwitch'], 0);
-    wearVar                  = parseInteger(params['underwearVar'], 0);
-
-    events = [];
-    events[STATE_WET] = parseInteger(params['wetEvent']);
-    events[STATE_MESSY] = parseInteger(params['messEvent']);
-
-    armorId = [];
-    armorId[0] = parseInteger(params['equimentId'], 0);
-    armorId[1] = parseInteger(params['idOffsetFemale'], 0) + armorId[0];
-    armorId[2] = parseInteger(params['idOffsetGeneric'], 0) + armorId[0];
-
-    underwearSlot = parseInteger(params['underwearSlot'], 5)-1;
-    if (underwearSlot === -1) {console.log('underwearSlot could not be read,' + 
-        ' please check and make sure it\'s only a number');}
-
-    if (!$.system.init)
-    {
       console.log('init');
-      console.log($.system);
       $.system.init = true;
 
       $.system.need[STATE_WET] = 0;
@@ -609,20 +596,31 @@
       $.system.gender = parseInteger(params['defaultGender'],0);
       $.system.genderWear = $.system.gender;
 
-
       if (startRunning)
       {
         start();
       }
-    } else {
-      console.log('Already Loaded');
-      if (loop == null)
-      {
-        !$.system.running && start() || $.system.running && halt();
-      }
-
     }
+  }
 
+  function autoRun()
+  {
+    console.log('load');
+
+    $gameActors._data.forEach(function(val, index, array)
+    {
+      if(val !== null && typeof val._pottySystem !== 'undefined')
+      {
+        $.actors.push($gameActors._data[index]._pottySystem);
+      } else {
+        $.actors.push(null);
+      }
+    });
+    
+    if (loop == null)
+    {
+      !$.system.running && start() || $.system.running && halt();
+    }
   }
 
   function start()
