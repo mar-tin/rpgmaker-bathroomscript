@@ -35,7 +35,8 @@
         "$gameSystem": false,
         "$gameActors": false,
         "setTimeout": false,
-        "clearTimeout": false
+        "clearTimeout": false,
+        "alert": false
     },
     "extends": "eslint:recommended"
 }
