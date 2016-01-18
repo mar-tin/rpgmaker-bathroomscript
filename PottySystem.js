@@ -155,10 +155,8 @@
   var params = PluginManager.parameters('PottySystem');
 
   var loop = null;
-
-  var store; // All vars that are stored.
   
-  var storageVars,stateSwitch, armorId, timer, wearVar, underwearSlot, events;
+  var stateSwitch, armorId, timer, wearVar, underwearSlot, events;
   var $ = {};
 
   const FLAGCOUNT = 2; // number of states
@@ -176,12 +174,11 @@
     neutral: {subject: 'they', object: 'them', prenom_pos: 'their', predic_pos: 'theirs', reflexive: 'themselves'}
   };
 
-  // onLoad
+  // onRun
 
-  var oldGameSystem_onAfterLoad = Game_System.prototype.onAfterLoad;
+  var oldGameSystem_onafterload = Game_System.prototype.onAfterLoad;
   Game_System.prototype.onAfterLoad = function() {
-    oldGameSystem_onAfterLoad.call(this);
-
+    oldGameSystem_onafterload.call(this);
     autoRun();
   };
 
@@ -226,7 +223,7 @@
         accident(state);
         break;
       case 'setwear':
-        setWear(parseInteger(args[1],store.currentWear>>FLAGCOUNT));
+        setWear(parseInteger(args[1],$.system.currentWear>>FLAGCOUNT));
         break;
       case 'setneed':
         setNeed(state,args[2],true); // to sanitize
@@ -254,7 +251,7 @@
         }
         break;
       case 'setgender':
-        setGender(parseInteger(args[1], store.gender));
+        setGender(parseInteger(args[1], $.system.gender));
         break;
       default:
         $gameMessage.add('PottySystem ' + args[0] + ' is an unknown command');
@@ -379,7 +376,7 @@
       return $gameParty.leader().equips()[underwearSlot];
     }
 
-    gndr = defValue(gndr, store.gender);
+    gndr = defValue(gndr, $.system.gender);
 
     return $dataArmors[armorId[gndr] + wear];
   }
@@ -395,13 +392,13 @@
 
   function isState(state, wear)
   {
-    wear = defValue(wear, store.currentWear);
+    wear = defValue(wear, $.system.currentWear);
     return((wear & state) === state);
   }
 
   function isUnderwear(type, wear)
   {
-    wear = defValue(wear, store.currentWear);
+    wear = defValue(wear, $.system.currentWear);
     return (type>>FLAGCOUNT === wear>>FLAGCOUNT);
   }
 
@@ -409,15 +406,15 @@
 
   function setGender(gndr)
   {
-    store.gender = gndr;
-    setVar(11,store.gender); //changing gender breaks changeUnderwear
+    $.system.gender = gndr;
+    setVar(11,$.system.gender); //changing gender breaks changeUnderwear
   }
 
   function setWear(wear, preserveState)
   {
     if (typeof preserveState !== 'undefined' && preserveState === true)
     {
-      wear = wear | (store.currentWear & (STATE_WET | STATE_MESSY));
+      wear = wear | ($.system.currentWear & (STATE_WET | STATE_MESSY));
     }
 
     wearVar && $gameVariables.setValue(wearVar, wear<<FLAGCOUNT);
@@ -430,30 +427,25 @@
         typeof nd === 'string' && 
         (nd.charAt(0) == '+' || nd.charAt(0) == '-'))
     {
-      store.need[state] += Number(nd);
+      $.system.need[state] += Number(nd);
     } else {
-      store.need[state] = Number(nd);
+      $.system.need[state] = Number(nd);
     }
-
-    setVar(storageVars.need[state],store.need[state]);
   }
 
   function setHold(state, hold)
   {
-    store.hold[state] = hold;
-    setVar(storageVars.hold[state], hold);
+    $.system.hold[state] = hold;
   }
 
   function setTrain(state, train)
   {
-    store.train[state] = train;
-    setVar(storageVars.train[state], train);
+    $.system.train[state] = train;
   }
 
   function setInc(state, inc)
   {
-    store.inc[state] = inc;
-    setVar(storageVars.inc[state], inc);
+    $.system.inc[state] = inc;
   }
 
   function changeUnderwear(newWear)
@@ -463,13 +455,12 @@
     // having an accident.
     if ((newWear & (1<<FLAGCOUNT) -1) === 0)
     {
-      store.genderWear = store.gender;
-      setVar(10, store.genderWear);
+      $.system.genderWear = $.system.gender;
     }
-    store.currentWear = newWear;
-    setVar(20, store.currentWear);
+    $.system.currentWear = newWear;
+    setVar(20, $.system.currentWear);
     var oldArmor = getArmor();
-    var newArmor = getArmor(newWear, store.genderWear);
+    var newArmor = getArmor(newWear, $.system.genderWear);
     $gameParty.gainItem(newArmor,1, true);
     $gameParty.leader().changeEquip(underwearSlot,newArmor);
     $gameParty.gainItem(oldArmor,-1,true);
@@ -478,7 +469,7 @@
   function setState(state, set, wear)
   {
     set = defValue(set, true);
-    var toSet = defValue(wear, store.currentWear);
+    var toSet = defValue(wear, $.system.currentWear);
     toSet = setFlag(toSet, state, set);
     if (typeof wear === 'undefined')
     {
@@ -502,7 +493,7 @@
       let state = 1<<stateBit;
       if (type & state)
       {
-        if (getFeelReq(store.need[state]/store.hold[state]) < getFeelRnd(store.train[state]))
+        if (getFeelReq($.system.need[state]/$.system.hold[state]) < getFeelRnd($.system.train[state]))
         {
           //console.log(`I have to ${state}`);
         }
@@ -542,9 +533,14 @@
   {
     console.log('autorun');
 
+    if($gameSystem === null)
+    {
+      return 1; //not in a game
+    }
+
     if(typeof $gameSystem._pottySystem === 'undefined')
     {
-      $gameSystem._pottySystem =  {init: false, running: false, actors: 0};
+      $gameSystem._pottySystem =  {init: false, running: false, actors: 0, need: [], hold: [], train: [], inc: []};
     }
     $.system = $gameSystem._pottySystem;
     $.actors = [];
@@ -557,6 +553,16 @@
         $.actors.push(null);
       }
     });
+
+
+    //temp
+    if(typeof $gameSystem._pottySystem.need == 'undefined')
+    {
+      $.system.need = [];
+      $.system.hold = [];
+      $.system.train = [];
+      $.system.inc = [];
+    }
 
     var startRunning = evalBool(params['startRunning']);
 
@@ -579,57 +585,29 @@
     underwearSlot = parseInteger(params['underwearSlot'], 5)-1;
     if (underwearSlot === -1) {console.log('underwearSlot could not be read,' + 
         ' please check and make sure it\'s only a number');}
-    
-    var firstVar = 10; //temp until param
-
-    storageVars = {need: [], hold: [], train: [], inc: []};
-    storageVars.currentWear = firstVar + 10;
-    storageVars.need[STATE_WET] = firstVar + 9;
-    storageVars.need[STATE_MESSY] = firstVar + 8;
-    storageVars.hold[STATE_WET] = firstVar + 7;
-    storageVars.hold[STATE_MESSY] = firstVar + 6;
-    storageVars.train[STATE_WET] = firstVar + 5;
-    storageVars.train[STATE_MESSY] = firstVar + 4;
-    storageVars.inc[STATE_WET] = firstVar + 3;
-    storageVars.inc[STATE_MESSY] = firstVar + 2;
-    storageVars.gender = firstVar + 1;
-    storageVars.genderWear = firstVar + 0;
-
-    store = {need: [], hold: [], train: [], inc: []};
 
     if (!$.system.init)
     {
       console.log('init');
+      console.log($.system);
       $.system.init = true;
 
-      store.need[STATE_WET] = 0;
-      store.need[STATE_MESSY] = 0;
+      $.system.need[STATE_WET] = 0;
+      $.system.need[STATE_MESSY] = 0;
 
-      store.hold[STATE_WET] = parseInteger(params['holdW'], 100);
-      store.hold[STATE_MESSY] = parseInteger(params['holdM'], 150);
+      $.system.hold[STATE_WET] = parseInteger(params['holdW'], 100);
+      $.system.hold[STATE_MESSY] = parseInteger(params['holdM'], 150);
 
-      store.train[STATE_WET] = parseInteger(params['trainW'], 40);
-      store.train[STATE_MESSY] = parseInteger(params['trainM'], 40);
+      $.system.train[STATE_WET] = parseInteger(params['trainW'], 40);
+      $.system.train[STATE_MESSY] = parseInteger(params['trainM'], 40);
 
-      store.inc[STATE_WET] = parseInteger(params['wetInc'], 5);
-      store.inc[STATE_MESSY] = parseInteger(params['messInc'], 5);
+      $.system.inc[STATE_WET] = parseInteger(params['wetInc'], 5);
+      $.system.inc[STATE_MESSY] = parseInteger(params['messInc'], 5);
 
-      store.currentWear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
+      $.system.currentWear = parseInteger(params['defaultWear'], 0)<<FLAGCOUNT;
 
-      store.gender = parseInteger(params['defaultGender'],0);
-      store.genderWear = store.gender;
-
-      setVar(storageVars.currentWear, store.currentWear);
-      setVar(storageVars.need[STATE_WET], store.need[STATE_WET]);
-      setVar(storageVars.need[STATE_MESSY], store.need[STATE_MESSY]);
-      setVar(storageVars.hold[STATE_WET], store.hold[STATE_WET]);
-      setVar(storageVars.hold[STATE_MESSY], store.hold[STATE_MESSY]);
-      setVar(storageVars.train[STATE_WET], store.train[STATE_WET]);
-      setVar(storageVars.train[STATE_MESSY], store.train[STATE_MESSY]);
-      setVar(storageVars.inc[STATE_WET], store.inc[STATE_WET]);
-      setVar(storageVars.inc[STATE_MESSY], store.inc[STATE_MESSY]);
-      setVar(storageVars.gender, store.gender);
-      setVar(storageVars.genderWear, store.genderWear);
+      $.system.gender = parseInteger(params['defaultGender'],0);
+      $.system.genderWear = $.system.gender;
 
 
       if (startRunning)
@@ -643,17 +621,6 @@
         !$.system.running && start() || $.system.running && halt();
       }
 
-      store.currentWear        = getVar(storageVars.currentWear);
-      store.need[STATE_WET]    = getVar(storageVars.need[STATE_WET]);
-      store.need[STATE_MESSY]  = getVar(storageVars.need[STATE_MESSY]);
-      store.hold[STATE_WET]    = getVar(storageVars.hold[STATE_WET]);
-      store.hold[STATE_MESSY]  = getVar(storageVars.hold[STATE_MESSY]);
-      store.train[STATE_WET]   = getVar(storageVars.train[STATE_WET]);
-      store.train[STATE_MESSY] = getVar(storageVars.train[STATE_MESSY]);
-      store.inc[STATE_WET]     = getVar(storageVars.inc[STATE_WET]);
-      store.inc[STATE_MESSY]   = getVar(storageVars.inc[STATE_MESSY]);
-      store.gender             = getVar(storageVars.gender);
-      store.genderWear         = getVar(storageVars.genderWear);
     }
 
   }
@@ -688,16 +655,16 @@
   function main()
   {
     // Increase need
-    setNeed(STATE_WET,rnd(1,store.inc[STATE_WET]),true);
-    setNeed(STATE_MESSY,rnd(1,store.inc[STATE_MESSY]),true);
+    setNeed(STATE_WET,rnd(1,$.system.inc[STATE_WET]),true);
+    setNeed(STATE_MESSY,rnd(1,$.system.inc[STATE_MESSY]),true);
 
     // Check if feel
     feel(STATE_WET | STATE_MESSY);
 
     // Check if accident
 
-    if (store.need[STATE_WET] > store.hold[STATE_WET]) {accident(STATE_WET);}
-    if (store.need[STATE_MESSY] > store.hold[STATE_MESSY]) {accident(STATE_MESSY);}
+    if ($.system.need[STATE_WET] > $.system.hold[STATE_WET]) {accident(STATE_WET);}
+    if ($.system.need[STATE_MESSY] > $.system.hold[STATE_MESSY]) {accident(STATE_MESSY);}
 
     // Re-set loop if loop is not halted (stop zombies after halt)
     loop !== null && (loop = setTimeout(main, timer));
